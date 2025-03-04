@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Block Puzzle</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Block Puzzle">
+    <meta name="theme-color" content="#4CAF50">
+    <link rel="apple-touch-icon" href="assets/icon-192.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="assets/icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/icon-192.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="assets/icon-192.png">
+    <link rel="apple-touch-startup-image" href="assets/splash-2048x2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="assets/splash-1668x2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="assets/splash-1668x2224.png" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="assets/splash-1536x2048.png" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="assets/splash-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="assets/splash-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="assets/splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="assets/splash-1242x2208.png" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="assets/splash-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="assets/splash-640x1136.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <h1>Block Puzzle</h1>
+            <div class="score-container">
+                Score: <span id="score">0</span>
+            </div>
+        </header>
+        
+        <main>
+            <canvas id="game-board"></canvas>
+            
+            <div id="next-pieces">
+                <h2>Next Pieces</h2>
+                <div class="pieces-container">
+                    <canvas id="piece-1" class="next-piece"></canvas>
+                    <canvas id="piece-2" class="next-piece"></canvas>
+                    <canvas id="piece-3" class="next-piece"></canvas>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <button id="new-game">New Game</button>
+        </footer>
+    </div>
+
+    <div id="ios-install-prompt" style="display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #f8f8f8; padding: 10px 20px; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); text-align: center; z-index: 1000;">
+        <p style="margin: 0; font-weight: bold;">Install this app on your device</p>
+        <p style="margin: 5px 0;">Tap <span style="font-size: 1.5em; vertical-align: middle;">⤴</span> and then "Add to Home Screen"</p>
+        <button id="close-install-prompt" style="background: #4CAF50; color: white; border: none; padding: 5px 10px; border-radius: 4px; margin-top: 5px;">Close</button>
+    </div>
+
+    <script src="js/pwa.js"></script>
+    <script src="js/game.js"></script>
+    <script>
+        if (
+            ('standalone' in navigator) && 
+            (!navigator.standalone) && 
+            (/iphone|ipod|ipad/i.test(navigator.userAgent)) && 
+            (/Safari/i.test(navigator.userAgent)) && 
+            !(/(CriOS|FxiOS|OPiOS|mercury)/i.test(navigator.userAgent))
+        ) {
+            document.getElementById('ios-install-prompt').style.display = 'block';
+        }
+        
+        document.getElementById('close-install-prompt').addEventListener('click', function() {
+            document.getElementById('ios-install-prompt').style.display = 'none';
+            localStorage.setItem('installPromptDismissed', 'true');
+        });
+        
+        if (localStorage.getItem('installPromptDismissed') === 'true') {
+            document.getElementById('ios-install-prompt').style.display = 'none';
+        }
+    </script>
+</body>
+</html> 

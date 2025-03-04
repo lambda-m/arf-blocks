@@ -267,9 +267,13 @@ class Game {
         x -= this.touchOffsetX;
         y -= this.touchOffsetY;
         
+        // Apply the finger offset to the grid Y position for touch devices
+        // This ensures both the piece and its landing position appear above the finger
+        const offsetY = this.isTouchDevice ? this.fingerOffset / this.blockSize : 0;
+        
         // Convert to grid coordinates with snapping
         const gridX = Math.max(0, Math.min(Math.round(x / this.blockSize), GRID_SIZE - this.selectedPiece.shape[0].length));
-        const gridY = Math.max(0, Math.min(Math.round(y / this.blockSize), GRID_SIZE - this.selectedPiece.shape.length));
+        const gridY = Math.max(0, Math.min(Math.round((y / this.blockSize) + offsetY), GRID_SIZE - this.selectedPiece.shape.length));
         
         // Only update if position changed
         if (gridX !== this.currentX || gridY !== this.currentY) {
@@ -286,7 +290,7 @@ class Game {
                 this.drawValidPlacement(this.currentX, this.currentY);
             }
             
-            // Draw the piece preview
+            // Draw the piece preview - no need for additional offset here since gridY already includes it
             this.drawPiece(this.currentX, this.currentY, this.selectedPiece.shape, this.selectedPiece.color, true);
         }
     }
@@ -383,10 +387,11 @@ class Game {
         // Check horizontal lines
         for (let y = 0; y < GRID_SIZE; y++) {
             if (this.grid[y].every(cell => cell !== 0)) {
-                this.grid.splice(y, 1);
-                this.grid.unshift(Array(GRID_SIZE).fill(0));
+                // Just clear the line without shifting anything
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    this.grid[y][x] = 0;
+                }
                 linesCleared++;
-                y--; // Check the same row again as everything shifted down
             }
         }
         
@@ -504,9 +509,8 @@ class Game {
     drawPiece(x, y, shape, color, isPreview = false) {
         // Different rendering for preview vs placed pieces
         if (isPreview) {
-            // On touch devices, show piece above finger with transparency
-            // On desktop, show piece at cursor position with full opacity
-            const offsetY = this.isTouchDevice ? this.currentOffset : 0;
+            // Both the preview and the placement indicator are now in the same position
+            // We don't need the additional offset since it's already in the gridY position
             
             if (this.isTouchDevice) {
                 // Semi-transparent for touch preview
@@ -520,7 +524,7 @@ class Game {
                 for (let j = 0; j < shape[i].length; j++) {
                     if (shape[i][j]) {
                         // Draw preview blocks
-                        this.drawBlock(x + j, y + i + offsetY/this.blockSize, color, true);
+                        this.drawBlock(x + j, y + i, color, true);
                     }
                 }
             }
