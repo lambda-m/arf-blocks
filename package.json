@@ -1,0 +1,13 @@
+{
+    "name": "block-puzzle-pwa",
+    "version": "1.0.0",
+    "description": "A block puzzle game as a Progressive Web App",
+    "main": "index.html",
+    "scripts": {
+        "start": "python -m http.server 8000",
+        "generate-icons": "node generate-icons.js"
+    },
+    "dependencies": {
+        "canvas": "^2.11.0"
+    }
+} 

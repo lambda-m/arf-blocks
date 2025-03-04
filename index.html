@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Block Puzzle</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="theme-color" content="#4CAF50">
+    <link rel="apple-touch-icon" href="assets/icon-192.png">
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <h1>Block Puzzle</h1>
+            <div class="score-container">
+                Score: <span id="score">0</span>
+            </div>
+        </header>
+        
+        <main>
+            <canvas id="game-board"></canvas>
+            
+            <div id="next-pieces">
+                <h2>Next Pieces</h2>
+                <div class="pieces-container">
+                    <canvas id="piece-1" class="next-piece"></canvas>
+                    <canvas id="piece-2" class="next-piece"></canvas>
+                    <canvas id="piece-3" class="next-piece"></canvas>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <button id="new-game">New Game</button>
+        </footer>
+    </div>
+
+    <script src="js/pwa.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html> 
