@@ -2,7 +2,9 @@
 const GRID_SIZE = 10;
 const BLOCK_COLORS = {
     I: '#00BFFF', // Deep sky blue
-    O: '#FFD700', // Gold yellow
+    O1: '#FFD700', // Gold yellow
+    O2: '#FFD700', // Gold yellow
+    O3: '#FFD700', // Gold yellow
     T: '#9932CC', // Dark orchid purple
     S: '#32CD32', // Lime green
     Z: '#FF4500', // Orange red
@@ -11,14 +13,13 @@ const BLOCK_COLORS = {
     // Additional shapes
     U: '#FF1493', // Deep pink
     L5: '#8A2BE2', // Blue violet
-    Z5: '#20B2AA'  // Light sea green
 };
 
 // Base shapes without rotations
 const BASE_SHAPES = {
     // Tetris shapes
     I: [[1, 1, 1, 1]],
-    O: [[1, 1], [1, 1]],
+    O2: [[1, 1], [1, 1]],
     T: [[0, 1, 0], [1, 1, 1]],
     S: [[0, 1, 1], [1, 1, 0]],
     Z: [[1, 1, 0], [0, 1, 1]],
@@ -27,7 +28,8 @@ const BASE_SHAPES = {
     // Additional shapes
     U: [[1, 0, 1], [1, 1, 1]],
     L5: [[1, 0, 0], [1, 0, 0], [1, 1, 1]],
-    Z5: [[1, 1, 0, 0], [0, 1, 1, 1]]
+    O1: [[1]],
+    O3: [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
 };
 
 // Function to rotate a shape 90 degrees clockwise
@@ -349,21 +351,23 @@ class Game {
         // Clear overlay canvas
         this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
         
+        // Calculate the visual position where the piece will be drawn
+        const visualX = x - this.touchOffsetX;
+        const visualY = y - this.touchOffsetY;
+        
+        // Calculate grid position based on where the piece is visually rendered
+        const gridX = Math.floor(visualX / this.blockSize);
+        const gridY = Math.floor(visualY / this.blockSize);
+        
         // Draw the dragged piece on the overlay at actual position
         const screenX = x + this.canvas.getBoundingClientRect().left;
         const screenY = y + this.canvas.getBoundingClientRect().top;
-        const pieceX = (x - this.touchOffsetX) / this.blockSize;
-        const pieceY = (y - this.touchOffsetY) / this.blockSize;
         
         // Check if the piece is over the grid
         const boardRect = this.canvas.getBoundingClientRect();
         const isOverGrid = x >= 0 && x < boardRect.width && y >= 0 && y < boardRect.height;
         
         if (isOverGrid) {
-            // Calculate grid position only when over the grid
-            const gridX = Math.floor(pieceX);
-            const gridY = Math.floor(pieceY);
-            
             // Update current grid position for placement
             this.currentX = gridX;
             this.currentY = gridY;
