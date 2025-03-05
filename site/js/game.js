@@ -31,6 +31,21 @@ const BASE_SHAPES = {
     O3: [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
 };
 
+// Add these constants at the top of the file
+const PIECE_WEIGHTS = {
+    I: 1.0,    // Long piece, good for clearing
+    O2: 1.0,   // 2x2 square, standard piece
+    T: 1.0,    // T-shape, versatile
+    S: 0.9,    // S-shape, slightly less common
+    Z: 0.9,    // Z-shape, slightly less common
+    J: 1.0,    // J-shape, standard piece
+    L: 1.0,    // L-shape, standard piece
+    U: 0.7,    // U-shape, more specialized
+    L5: 0.8,   // L5-shape, more specialized
+    O1: 0.3,   // 1x1, rare piece
+    O3: 0.6    // 3x3, uncommon piece
+};
+
 // Function to rotate a shape 90 degrees clockwise
 function rotateShape(shape) {
     const rows = shape.length;
@@ -140,6 +155,11 @@ class Game {
         this.dragStartCanvas = null;
         this.dragStartRect = null;
         
+        // Initialize piece selection tracking
+        this.pieceBag = [];
+        this.pieceHistory = [];
+        this.droughtTracking = new Map(Object.keys(PIECE_WEIGHTS).map(key => [key, 0]));
+        
         // Bind event listeners
         this.bindEvents();
         
@@ -148,26 +168,27 @@ class Game {
     }
     
     initGame() {
+        // Reset game state
         this.grid = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
         this.score = 0;
         this.updateScore();
+        
+        // Reset piece selection tracking
+        this.pieceBag = [];
+        this.pieceHistory = [];
+        this.droughtTracking = new Map(Object.keys(PIECE_WEIGHTS).map(key => [key, 0]));
+        
+        // Clear and regenerate next pieces
+        this.nextPieces = [];
         this.generateNextPieces();
+        
+        // Redraw the board
         this.draw();
     }
     
     generateNextPieces() {
-        const shapeKeys = Object.keys(SHAPES);
         while (this.nextPieces.length < 3) {
-            const shapeKey = shapeKeys[Math.floor(Math.random() * shapeKeys.length)];
-            // Get all possible rotations for this shape
-            const rotations = SHAPES[shapeKey];
-            // Pick a random rotation
-            const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
-            
-            this.nextPieces.push({
-                shape: randomRotation,
-                color: BLOCK_COLORS[shapeKey]
-            });
+            this.nextPieces.push(this.getNextPiece());
         }
         this.drawNextPieces();
     }
@@ -544,11 +565,20 @@ class Game {
     
     checkLines() {
         let linesCleared = 0;
+        let clearedPositions = [];  // Store positions of cleared cells for effects
         
         // Check horizontal lines
         for (let y = 0; y < GRID_SIZE; y++) {
             if (this.grid[y].every(cell => cell !== 0)) {
-                // Just clear the line without shifting anything
+                // Store the positions and colors before clearing
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    clearedPositions.push({
+                        x: x,
+                        y: y,
+                        color: this.grid[y][x]
+                    });
+                }
+                // Clear the line
                 for (let x = 0; x < GRID_SIZE; x++) {
                     this.grid[y][x] = 0;
                 }
@@ -559,6 +589,15 @@ class Game {
         // Check vertical lines
         for (let x = 0; x < GRID_SIZE; x++) {
             if (this.grid.every(row => row[x] !== 0)) {
+                // Store the positions and colors before clearing
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    clearedPositions.push({
+                        x: x,
+                        y: y,
+                        color: this.grid[y][x]
+                    });
+                }
+                // Clear the line
                 for (let y = 0; y < GRID_SIZE; y++) {
                     this.grid[y][x] = 0;
                 }
@@ -566,8 +605,11 @@ class Game {
             }
         }
         
-        // Update score based on lines cleared
+        // Create explosion effect if lines were cleared
         if (linesCleared > 0) {
+            this.createClearEffect(clearedPositions, linesCleared);
+            
+            // Update score
             let points = 0;
             for (let i = 0; i < linesCleared; i++) {
                 points += 10 * Math.pow(2, i);
@@ -575,6 +617,79 @@ class Game {
             this.score += points;
             this.updateScore();
         }
+    }
+    
+    createClearEffect(positions, lineCount) {
+        const particles = [];
+        const particlesPerCell = 8 + (lineCount * 2); // More particles for more lines
+        
+        // Create particles for each cleared cell
+        positions.forEach(pos => {
+            for (let i = 0; i < particlesPerCell; i++) {
+                particles.push({
+                    x: (pos.x + 0.5) * this.blockSize,
+                    y: (pos.y + 0.5) * this.blockSize,
+                    color: pos.color,
+                    size: Math.random() * 4 + 2,
+                    speedX: (Math.random() - 0.5) * (6 + lineCount * 2),
+                    speedY: (Math.random() - 0.5) * (6 + lineCount * 2),
+                    life: 1.0,
+                    rotation: Math.random() * Math.PI * 2
+                });
+            }
+        });
+        
+        // Animation timing
+        const startTime = performance.now();
+        const duration = 600 + (lineCount * 100); // Longer animation for more lines
+        
+        // Animation function
+        const animate = (currentTime) => {
+            const progress = (currentTime - startTime) / duration;
+            
+            if (progress < 1) {
+                // Clear canvas
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Draw regular grid and blocks
+                this.draw();
+                
+                // Draw particles
+                particles.forEach(particle => {
+                    // Update particle position
+                    particle.x += particle.speedX;
+                    particle.y += particle.speedY;
+                    particle.rotation += 0.1;
+                    particle.life = 1 - progress;
+                    particle.size *= 0.99;
+                    
+                    // Draw particle
+                    this.ctx.save();
+                    this.ctx.translate(particle.x, particle.y);
+                    this.ctx.rotate(particle.rotation);
+                    this.ctx.globalAlpha = particle.life * 0.7;
+                    
+                    // Create gradient for particle
+                    const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, particle.size);
+                    gradient.addColorStop(0, particle.color);
+                    gradient.addColorStop(1, this.lightenColor(particle.color, 50));
+                    
+                    this.ctx.fillStyle = gradient;
+                    this.ctx.fillRect(-particle.size/2, -particle.size/2, 
+                                    particle.size, particle.size);
+                    
+                    this.ctx.restore();
+                });
+                
+                requestAnimationFrame(animate);
+            } else {
+                // Ensure final state is drawn correctly
+                this.draw();
+            }
+        };
+        
+        // Start animation
+        requestAnimationFrame(animate);
     }
     
     updateScore() {
@@ -755,51 +870,43 @@ class Game {
     }
     
     drawNextPieces() {
+        // Calculate maximum possible shape dimensions
+        const maxShapeDimensions = {
+            width: Math.max(...Object.values(BASE_SHAPES).map(shape => shape[0].length)),
+            height: Math.max(...Object.values(BASE_SHAPES).map(shape => shape.length))
+        };
+        
         this.nextPieces.forEach((piece, index) => {
-            // Skip drawing the piece that's being dragged
-            if (this.selectedPieceIndex === index && this.dragging) {
-                const canvas = this.nextPieceCanvases[index];
-                const ctx = canvas.getContext('2d');
-                
-                // Clear the canvas
-                canvas.width = 90;
-                canvas.height = 60;
-                
-                // Draw background
-                ctx.fillStyle = '#f8f8f8';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // Draw border
-                ctx.strokeStyle = '#ddd';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(0, 0, canvas.width, canvas.height);
-                return;
-            }
-            
             const canvas = this.nextPieceCanvases[index];
             const ctx = canvas.getContext('2d');
             
-            // Set canvas size appropriate for the blocks
-            canvas.width = 90; 
-            canvas.height = 60;
-            
+            // Set canvas size with padding for largest possible shape
             const blockSize = 15;
+            const padding = blockSize; // One block worth of padding on each side
+            canvas.width = (maxShapeDimensions.width * blockSize) + (padding * 2);
+            canvas.height = (maxShapeDimensions.height * blockSize) + (padding * 2);
             
-            // Clear canvas
+            // Clear canvas with transparent background
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Draw background
-            ctx.fillStyle = '#f8f8f8';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw border
+            // Draw rounded border
             ctx.strokeStyle = this.selectedPieceIndex === index ? '#4CAF50' : '#ddd';
-            ctx.lineWidth = this.selectedPieceIndex === index ? 3 : 1;
-            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = this.selectedPieceIndex === index ? 3 : 2;
+            ctx.beginPath();
+            const radius = 10;
+            ctx.roundRect(1, 1, canvas.width - 2, canvas.height - 2, radius);
+            ctx.stroke();
+            
+            // Skip rest of drawing if piece is being dragged
+            if (this.selectedPieceIndex === index && this.dragging) {
+                return;
+            }
             
             // Center the piece
-            const offsetX = (canvas.width - piece.shape[0].length * blockSize) / 2;
-            const offsetY = (canvas.height - piece.shape.length * blockSize) / 2;
+            const pieceWidth = piece.shape[0].length * blockSize;
+            const pieceHeight = piece.shape.length * blockSize;
+            const offsetX = (canvas.width - pieceWidth) / 2;
+            const offsetY = (canvas.height - pieceHeight) / 2;
             
             // Draw piece with 3D effect
             const color = piece.color;
@@ -894,6 +1001,99 @@ class Game {
     resizeOverlay() {
         this.overlayCanvas.width = window.innerWidth;
         this.overlayCanvas.height = window.innerHeight;
+    }
+    
+    refillBag() {
+        // Create a new bag with multiple copies of each piece based on weights
+        const newBag = [];
+        Object.entries(PIECE_WEIGHTS).forEach(([key, weight]) => {
+            // Convert weight to number of copies (1.0 = 4 copies, 0.3 = 1 copy, etc.)
+            const copies = Math.max(1, Math.round(weight * 4));
+            for (let i = 0; i < copies; i++) {
+                newBag.push(key);
+            }
+        });
+        
+        // Shuffle the bag
+        for (let i = newBag.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [newBag[i], newBag[j]] = [newBag[j], newBag[i]];
+        }
+        
+        this.pieceBag = newBag;
+    }
+    
+    updateDroughtTracking(selectedKey) {
+        // Increment drought counters for all pieces
+        this.droughtTracking.forEach((value, key) => {
+            if (key === selectedKey) {
+                this.droughtTracking.set(key, 0); // Reset counter for selected piece
+            } else {
+                this.droughtTracking.set(key, value + 1); // Increment counter for others
+            }
+        });
+    }
+    
+    getNextPiece() {
+        // If bag is empty, refill it
+        if (this.pieceBag.length === 0) {
+            this.refillBag();
+        }
+        
+        // Calculate drought modifiers
+        const droughtModifiers = new Map();
+        this.droughtTracking.forEach((drought, key) => {
+            // Start boosting probability after 8 pieces without seeing this type
+            const boost = Math.max(0, (drought - 8) * 0.15);
+            droughtModifiers.set(key, 1 + boost);
+        });
+        
+        // Get current piece types in hand
+        const currentTypes = this.nextPieces.map(piece => 
+            Object.keys(SHAPES).find(key => 
+                JSON.stringify(SHAPES[key][0]) === JSON.stringify(piece.shape)
+            )
+        );
+        
+        // Select pieces with modified weights
+        let selectedKey;
+        const maxAttempts = 3; // Try a few times to get a good piece
+        
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            // Get a random piece from the bag
+            const bagIndex = Math.floor(Math.random() * this.pieceBag.length);
+            const candidateKey = this.pieceBag[bagIndex];
+            
+            // Calculate final weight based on duplicates and drought
+            const duplicateCount = currentTypes.filter(t => t === candidateKey).length;
+            const droughtModifier = droughtModifiers.get(candidateKey) || 1;
+            const finalWeight = PIECE_WEIGHTS[candidateKey] * 
+                              Math.pow(0.4, duplicateCount) * 
+                              droughtModifier;
+            
+            // Accept piece if it's the last attempt or passes probability check
+            if (attempt === maxAttempts - 1 || Math.random() < finalWeight) {
+                selectedKey = candidateKey;
+                this.pieceBag.splice(bagIndex, 1);
+                break;
+            }
+        }
+        
+        // Update tracking
+        this.updateDroughtTracking(selectedKey);
+        this.pieceHistory.push(selectedKey);
+        if (this.pieceHistory.length > 20) {
+            this.pieceHistory.shift();
+        }
+        
+        // Get random rotation and return piece
+        const rotations = SHAPES[selectedKey];
+        const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
+        
+        return {
+            shape: randomRotation,
+            color: BLOCK_COLORS[selectedKey]
+        };
     }
 }
 
