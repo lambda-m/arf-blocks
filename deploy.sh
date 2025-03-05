@@ -5,7 +5,7 @@ set -e
 
 # Define variables for the rsync parameters
 
-RSYNC_CMD="rsync -avz --delete site/ lambda-m.nl:/var/www/htdocs/lambda-m.nl/arfblocks/"
+RSYNC_CMD="rsync -avz --delete site/ lambda-m.nl:/var/www/htdocs/arf-blocks.nl/"
 
 # Function to check if a command exists
 command_exists () {
