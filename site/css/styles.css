@@ -149,7 +149,7 @@ h1 {
     aspect-ratio: 1;
     background: var(--grid-background);
     border: 8px solid var(--grid-border);
-    border-radius: 24px;
+    border-radius: 0;
     display: block;
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
@@ -157,8 +157,7 @@ h1 {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     cursor: pointer;
-    box-shadow: 0 8px 24px var(--shadow-color),
-                inset 0 2px 4px rgba(255,255,255,0.1);
+    box-shadow: 0 8px 24px var(--shadow-color);
 }
 
 #next-pieces {

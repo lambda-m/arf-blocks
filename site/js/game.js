@@ -1,18 +1,17 @@
 // Game Constants
 const GRID_SIZE = 10;
 const BLOCK_COLORS = {
-    I: '#00BFFF', // Deep sky blue
-    O1: '#FFD700', // Gold yellow
-    O2: '#FFD700', // Gold yellow
-    O3: '#FFD700', // Gold yellow
-    T: '#9932CC', // Dark orchid purple
-    S: '#32CD32', // Lime green
-    Z: '#FF4500', // Orange red
-    J: '#4169E1', // Royal blue
-    L: '#FF8C00', // Dark orange
-    // Additional shapes
-    U: '#FF1493', // Deep pink
-    L5: '#8A2BE2', // Blue violet
+    I: '#00A5E5',    // Bright blue
+    O1: '#FFB30F',   // Golden yellow
+    O2: '#FF7F11',   // Orange
+    O3: '#FF3F00',   // Vermillion
+    T: '#C874D9',    // Orchid purple
+    S: '#2ECC71',    // Emerald green
+    Z: '#E74C3C',    // Crimson red
+    J: '#3498DB',    // Ocean blue
+    L: '#F39C12',    // Amber
+    U: '#FF63B6',    // Pink
+    L5: '#9B59B6',   // Amethyst purple
 };
 
 // Base shapes without rotations
@@ -339,48 +338,40 @@ class Game {
     }
     
     updateDragPosition(x, y) {
-        // Store the actual mouse/touch position for free-form dragging
         this.lastX = x;
         this.lastY = y;
-        
-        // Apply the finger offset for touch devices
-        if (this.isTouchDevice) {
-            y += this.fingerOffset;
-        }
         
         // Clear overlay canvas
         this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
         
+        // Apply the finger offset for touch devices before any calculations
+        const adjustedY = this.isTouchDevice ? y + this.fingerOffset : y;
+        
         // Calculate the visual position where the piece will be drawn
         const visualX = x - this.touchOffsetX;
-        const visualY = y - this.touchOffsetY;
+        const visualY = adjustedY - this.touchOffsetY;
         
-        // Calculate grid position based on where the piece is visually rendered
-        const gridX = Math.floor(visualX / this.blockSize);
-        const gridY = Math.floor(visualY / this.blockSize);
+        // Calculate grid position based on the center of the blocks
+        const gridX = Math.floor((visualX + this.blockSize / 2) / this.blockSize);
+        const gridY = Math.floor((visualY + this.blockSize / 2) / this.blockSize);
         
-        // Draw the dragged piece on the overlay at actual position
         const screenX = x + this.canvas.getBoundingClientRect().left;
-        const screenY = y + this.canvas.getBoundingClientRect().top;
+        const screenY = adjustedY + this.canvas.getBoundingClientRect().top;
         
-        // Check if the piece is over the grid
         const boardRect = this.canvas.getBoundingClientRect();
-        const isOverGrid = x >= 0 && x < boardRect.width && y >= 0 && y < boardRect.height;
+        const isOverGrid = x >= 0 && x < boardRect.width && 
+                          adjustedY >= 0 && adjustedY < boardRect.height;
         
         if (isOverGrid) {
-            // Update current grid position for placement
             this.currentX = gridX;
             this.currentY = gridY;
             
-            // Update game board display
             this.draw();
             
-            // Draw placement preview if over a valid position
             if (this.isValidPlacement(gridX, gridY, this.selectedPiece.shape)) {
                 this.drawValidPlacement(gridX, gridY);
             }
         } else {
-            // When not over grid, set invalid position and just draw the board
             this.currentX = -1;
             this.currentY = -1;
             this.draw();
@@ -396,38 +387,41 @@ class Game {
         const scaleFactor = this.blockSize / 15;
         const blockSize = 15 * scaleFactor;
         
-        this.overlayCtx.globalAlpha = 1; // Full opacity for dragged piece
+        this.overlayCtx.globalAlpha = 1;
         
         const shape = this.selectedPiece.shape;
         const color = this.selectedPiece.color;
         
+        // Make blocks slightly smaller while dragging for better visibility
+        const shrinkAmount = 4;
+        
         for (let i = 0; i < shape.length; i++) {
             for (let j = 0; j < shape[i].length; j++) {
                 if (shape[i][j]) {
-                    // Main block
+                    // Main block with reduced size
                     this.overlayCtx.fillStyle = color;
                     this.overlayCtx.fillRect(
-                        x + j * blockSize,
-                        y + i * blockSize,
-                        blockSize - 1,
-                        blockSize - 1
+                        x + j * blockSize + shrinkAmount,
+                        y + i * blockSize + shrinkAmount,
+                        blockSize - (shrinkAmount * 2),
+                        blockSize - (shrinkAmount * 2)
                     );
                     
                     // Highlight (top-left)
                     this.overlayCtx.fillStyle = this.lightenColor(color, 30);
                     this.overlayCtx.beginPath();
-                    this.overlayCtx.moveTo(x + j * blockSize, y + i * blockSize);
-                    this.overlayCtx.lineTo(x + (j + 1) * blockSize - 1, y + i * blockSize);
-                    this.overlayCtx.lineTo(x + j * blockSize, y + (i + 1) * blockSize - 1);
+                    this.overlayCtx.moveTo(x + j * blockSize + shrinkAmount, y + i * blockSize + shrinkAmount);
+                    this.overlayCtx.lineTo(x + (j + 1) * blockSize - shrinkAmount - 1, y + i * blockSize + shrinkAmount);
+                    this.overlayCtx.lineTo(x + j * blockSize + shrinkAmount, y + (i + 1) * blockSize - shrinkAmount - 1);
                     this.overlayCtx.closePath();
                     this.overlayCtx.fill();
                     
                     // Shadow (bottom-right)
                     this.overlayCtx.fillStyle = this.darkenColor(color, 20);
                     this.overlayCtx.beginPath();
-                    this.overlayCtx.moveTo(x + (j + 1) * blockSize - 1, y + i * blockSize);
-                    this.overlayCtx.lineTo(x + (j + 1) * blockSize - 1, y + (i + 1) * blockSize - 1);
-                    this.overlayCtx.lineTo(x + j * blockSize, y + (i + 1) * blockSize - 1);
+                    this.overlayCtx.moveTo(x + (j + 1) * blockSize - shrinkAmount - 1, y + i * blockSize + shrinkAmount);
+                    this.overlayCtx.lineTo(x + (j + 1) * blockSize - shrinkAmount - 1, y + (i + 1) * blockSize - shrinkAmount - 1);
+                    this.overlayCtx.lineTo(x + j * blockSize + shrinkAmount, y + (i + 1) * blockSize - shrinkAmount - 1);
                     this.overlayCtx.closePath();
                     this.overlayCtx.fill();
                 }
@@ -711,20 +705,53 @@ class Game {
     }
     
     drawValidPlacement(x, y) {
-        // Draw a subtle highlight to show where the piece will be placed
-        this.ctx.fillStyle = 'rgba(76, 175, 80, 0.15)'; // Even more transparent
-        for (let i = 0; i < this.selectedPiece.shape.length; i++) {
-            for (let j = 0; j < this.selectedPiece.shape[i].length; j++) {
-                if (this.selectedPiece.shape[i][j]) {
-                    this.ctx.fillRect(
-                        (x + j) * this.blockSize + 1,
-                        (y + i) * this.blockSize + 1,
-                        this.blockSize - 2,
-                        this.blockSize - 2
-                    );
+        // Create a subtle white glow effect
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        this.ctx.lineWidth = 2;
+        this.ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+        this.ctx.shadowBlur = 4;
+        
+        // Start a new path
+        this.ctx.beginPath();
+        
+        const shape = this.selectedPiece.shape;
+        
+        // For each cell in the shape
+        for (let i = 0; i < shape.length; i++) {
+            for (let j = 0; j < shape[i].length; j++) {
+                if (shape[i][j]) {
+                    // Check all four sides of this cell
+                    // Top
+                    if (!shape[i-1]?.[j]) {
+                        this.ctx.moveTo((x + j) * this.blockSize, (y + i) * this.blockSize);
+                        this.ctx.lineTo((x + j + 1) * this.blockSize, (y + i) * this.blockSize);
+                    }
+                    // Right
+                    if (!shape[i][j+1]) {
+                        this.ctx.moveTo((x + j + 1) * this.blockSize, (y + i) * this.blockSize);
+                        this.ctx.lineTo((x + j + 1) * this.blockSize, (y + i + 1) * this.blockSize);
+                    }
+                    // Bottom
+                    if (!shape[i+1]?.[j]) {
+                        this.ctx.moveTo((x + j) * this.blockSize, (y + i + 1) * this.blockSize);
+                        this.ctx.lineTo((x + j + 1) * this.blockSize, (y + i + 1) * this.blockSize);
+                    }
+                    // Left
+                    if (!shape[i][j-1]) {
+                        this.ctx.moveTo((x + j) * this.blockSize, (y + i) * this.blockSize);
+                        this.ctx.lineTo((x + j) * this.blockSize, (y + i + 1) * this.blockSize);
+                    }
                 }
             }
         }
+        
+        // Stroke the entire path at once
+        this.ctx.stroke();
+        
+        // Reset shadow effects
+        this.ctx.shadowColor = 'transparent';
+        this.ctx.shadowBlur = 0;
+        this.ctx.lineWidth = 1;
     }
     
     drawNextPieces() {
