@@ -14,8 +14,8 @@ const BLOCK_COLORS = {
     Z5: '#20B2AA'  // Light sea green
 };
 
-// Block Shapes (1 represents a block, 0 represents empty space)
-const SHAPES = {
+// Base shapes without rotations
+const BASE_SHAPES = {
     // Tetris shapes
     I: [[1, 1, 1, 1]],
     O: [[1, 1], [1, 1]],
@@ -30,10 +30,66 @@ const SHAPES = {
     Z5: [[1, 1, 0, 0], [0, 1, 1, 1]]
 };
 
+// Function to rotate a shape 90 degrees clockwise
+function rotateShape(shape) {
+    const rows = shape.length;
+    const cols = shape[0].length;
+    const rotated = Array(cols).fill().map(() => Array(rows).fill(0));
+    
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            rotated[c][rows - 1 - r] = shape[r][c];
+        }
+    }
+    
+    return rotated;
+}
+
+// Generate all rotations for each shape
+function generateAllRotations(baseShapes) {
+    const allShapes = {};
+    
+    for (const [key, shape] of Object.entries(baseShapes)) {
+        const rotations = new Set(); // Use Set to avoid duplicate rotations
+        let currentRotation = shape;
+        
+        // Generate all 4 rotations
+        for (let i = 0; i < 4; i++) {
+            // Convert the shape to a string for comparison
+            const rotationKey = JSON.stringify(currentRotation);
+            rotations.add(rotationKey);
+            currentRotation = rotateShape(currentRotation);
+        }
+        
+        // Convert back to arrays and store unique rotations
+        allShapes[key] = Array.from(rotations).map(r => JSON.parse(r));
+    }
+    
+    return allShapes;
+}
+
+// Generate all possible rotations
+const SHAPES = generateAllRotations(BASE_SHAPES);
+
 class Game {
     constructor() {
         this.canvas = document.getElementById('game-board');
         this.ctx = this.canvas.getContext('2d');
+        
+        // Create overlay canvas for dragging
+        this.overlayCanvas = document.createElement('canvas');
+        this.overlayCanvas.style.position = 'fixed';
+        this.overlayCanvas.style.top = '0';
+        this.overlayCanvas.style.left = '0';
+        this.overlayCanvas.style.pointerEvents = 'none';
+        this.overlayCanvas.style.zIndex = '1000';
+        document.body.appendChild(this.overlayCanvas);
+        this.overlayCtx = this.overlayCanvas.getContext('2d');
+        
+        // Set overlay canvas size to window size
+        this.resizeOverlay();
+        window.addEventListener('resize', () => this.resizeOverlay());
+        
         this.nextPieceCanvases = [
             document.getElementById('piece-1'),
             document.getElementById('piece-2'),
@@ -63,12 +119,25 @@ class Game {
         this.touchOffsetY = 0;
         
         // Different offsets for touch vs mouse
-        this.fingerOffset = -60; // Larger offset for above finger
+        this.fingerOffset = -100; // Increased offset for even better visibility above finger
         this.mouseOffset = 0;    // No offset for mouse
         this.currentOffset = 0;  // Will be set based on input type
         
         // Device detection
         this.isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        
+        // Animation properties
+        this.animating = false;
+        this.animationStartTime = null;
+        this.animationDuration = 300; // ms
+        this.animationStartPos = null;
+        this.animationEndPos = null;
+        this.animationPiece = null;
+        this.animationCallback = null;
+        
+        // Original position of the piece being dragged
+        this.dragStartCanvas = null;
+        this.dragStartRect = null;
         
         // Bind event listeners
         this.bindEvents();
@@ -87,16 +156,17 @@ class Game {
     
     generateNextPieces() {
         const shapeKeys = Object.keys(SHAPES);
-        if (this.nextPieces.length < 3) {
-            // Only generate new pieces as needed
-            const newPieces = Array(3 - this.nextPieces.length).fill().map(() => {
-                const shapeKey = shapeKeys[Math.floor(Math.random() * shapeKeys.length)];
-                return {
-                    shape: SHAPES[shapeKey],
-                    color: BLOCK_COLORS[shapeKey]
-                };
+        while (this.nextPieces.length < 3) {
+            const shapeKey = shapeKeys[Math.floor(Math.random() * shapeKeys.length)];
+            // Get all possible rotations for this shape
+            const rotations = SHAPES[shapeKey];
+            // Pick a random rotation
+            const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
+            
+            this.nextPieces.push({
+                shape: randomRotation,
+                color: BLOCK_COLORS[shapeKey]
             });
-            this.nextPieces = [...this.nextPieces, ...newPieces];
         }
         this.drawNextPieces();
     }
@@ -158,6 +228,10 @@ class Game {
         this.dragging = true;
         this.dragStartedFromPiece = true;
         
+        // Store the original canvas and its position for return animation
+        this.dragStartCanvas = this.nextPieceCanvases[index];
+        this.dragStartRect = this.dragStartCanvas.getBoundingClientRect();
+        
         // Set the appropriate offset for touch or mouse
         this.currentOffset = isTouch ? this.fingerOffset : this.mouseOffset;
         
@@ -166,8 +240,6 @@ class Game {
         if (isTouch) {
             const touch = e.touches[0];
             const boardRect = this.canvas.getBoundingClientRect();
-            
-            // Calculate position relative to the game board
             x = touch.clientX - boardRect.left;
             y = touch.clientY - boardRect.top;
             
@@ -178,8 +250,6 @@ class Game {
             this.touchOffsetY = pieceHeight / 2;
         } else {
             const boardRect = this.canvas.getBoundingClientRect();
-            
-            // Calculate position relative to the game board
             x = e.clientX - boardRect.left;
             y = e.clientY - boardRect.top;
             
@@ -190,10 +260,14 @@ class Game {
             this.touchOffsetY = pieceHeight / 2;
         }
         
-        // Initial position (even if outside the board)
-        this.updateDragPosition(x, y);
+        // Start dragging from the original piece position
+        const startRect = this.dragStartRect;
+        const boardRect = this.canvas.getBoundingClientRect();
+        this.lastX = startRect.left - boardRect.left + startRect.width / 2;
+        this.lastY = startRect.top - boardRect.top + startRect.height / 2;
         
-        // Highlight the selected piece
+        // Update position and clear original piece
+        this.updateDragPosition(x, y);
         this.drawNextPieces();
     }
     
@@ -263,74 +337,163 @@ class Game {
     }
     
     updateDragPosition(x, y) {
-        // Adjust position based on touch/mouse offset
-        x -= this.touchOffsetX;
-        y -= this.touchOffsetY;
+        // Store the actual mouse/touch position for free-form dragging
+        this.lastX = x;
+        this.lastY = y;
         
-        // Apply the finger offset to the grid Y position for touch devices
-        // This ensures both the piece and its landing position appear above the finger
-        const offsetY = this.isTouchDevice ? this.fingerOffset / this.blockSize : 0;
+        // Apply the finger offset for touch devices
+        if (this.isTouchDevice) {
+            y += this.fingerOffset;
+        }
         
-        // Convert to grid coordinates with snapping
-        const gridX = Math.max(0, Math.min(Math.round(x / this.blockSize), GRID_SIZE - this.selectedPiece.shape[0].length));
-        const gridY = Math.max(0, Math.min(Math.round((y / this.blockSize) + offsetY), GRID_SIZE - this.selectedPiece.shape.length));
+        // Clear overlay canvas
+        this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
         
-        // Only update if position changed
-        if (gridX !== this.currentX || gridY !== this.currentY) {
+        // Draw the dragged piece on the overlay at actual position
+        const screenX = x + this.canvas.getBoundingClientRect().left;
+        const screenY = y + this.canvas.getBoundingClientRect().top;
+        const pieceX = (x - this.touchOffsetX) / this.blockSize;
+        const pieceY = (y - this.touchOffsetY) / this.blockSize;
+        
+        // Check if the piece is over the grid
+        const boardRect = this.canvas.getBoundingClientRect();
+        const isOverGrid = x >= 0 && x < boardRect.width && y >= 0 && y < boardRect.height;
+        
+        if (isOverGrid) {
+            // Calculate grid position only when over the grid
+            const gridX = Math.floor(pieceX);
+            const gridY = Math.floor(pieceY);
+            
+            // Update current grid position for placement
             this.currentX = gridX;
             this.currentY = gridY;
-            this.lastX = x;
-            this.lastY = y;
             
-            // Update display
+            // Update game board display
             this.draw();
             
-            // Draw valid placement indicator
-            if (this.isValidPlacement(this.currentX, this.currentY, this.selectedPiece.shape)) {
-                this.drawValidPlacement(this.currentX, this.currentY);
+            // Draw placement preview if over a valid position
+            if (this.isValidPlacement(gridX, gridY, this.selectedPiece.shape)) {
+                this.drawValidPlacement(gridX, gridY);
             }
-            
-            // Draw the piece preview - no need for additional offset here since gridY already includes it
-            this.drawPiece(this.currentX, this.currentY, this.selectedPiece.shape, this.selectedPiece.color, true);
+        } else {
+            // When not over grid, set invalid position and just draw the board
+            this.currentX = -1;
+            this.currentY = -1;
+            this.draw();
+        }
+        
+        // Always draw the dragged piece
+        this.drawDraggedPiece(screenX - this.touchOffsetX, screenY - this.touchOffsetY);
+    }
+    
+    drawDraggedPiece(x, y) {
+        if (!this.selectedPiece) return;
+        
+        const scaleFactor = this.blockSize / 15;
+        const blockSize = 15 * scaleFactor;
+        
+        this.overlayCtx.globalAlpha = 1; // Full opacity for dragged piece
+        
+        const shape = this.selectedPiece.shape;
+        const color = this.selectedPiece.color;
+        
+        for (let i = 0; i < shape.length; i++) {
+            for (let j = 0; j < shape[i].length; j++) {
+                if (shape[i][j]) {
+                    // Main block
+                    this.overlayCtx.fillStyle = color;
+                    this.overlayCtx.fillRect(
+                        x + j * blockSize,
+                        y + i * blockSize,
+                        blockSize - 1,
+                        blockSize - 1
+                    );
+                    
+                    // Highlight (top-left)
+                    this.overlayCtx.fillStyle = this.lightenColor(color, 30);
+                    this.overlayCtx.beginPath();
+                    this.overlayCtx.moveTo(x + j * blockSize, y + i * blockSize);
+                    this.overlayCtx.lineTo(x + (j + 1) * blockSize - 1, y + i * blockSize);
+                    this.overlayCtx.lineTo(x + j * blockSize, y + (i + 1) * blockSize - 1);
+                    this.overlayCtx.closePath();
+                    this.overlayCtx.fill();
+                    
+                    // Shadow (bottom-right)
+                    this.overlayCtx.fillStyle = this.darkenColor(color, 20);
+                    this.overlayCtx.beginPath();
+                    this.overlayCtx.moveTo(x + (j + 1) * blockSize - 1, y + i * blockSize);
+                    this.overlayCtx.lineTo(x + (j + 1) * blockSize - 1, y + (i + 1) * blockSize - 1);
+                    this.overlayCtx.lineTo(x + j * blockSize, y + (i + 1) * blockSize - 1);
+                    this.overlayCtx.closePath();
+                    this.overlayCtx.fill();
+                }
+            }
         }
     }
     
     endDrag() {
         if (!this.selectedPiece) return;
         
-        if (this.isValidPlacement(this.currentX, this.currentY, this.selectedPiece.shape)) {
-            // Count blocks in the piece for scoring
-            const blockCount = this.countBlocksInShape(this.selectedPiece.shape);
+        // Check if the piece is over the grid and in a valid position
+        const isValid = this.currentX >= 0 && this.currentY >= 0 && 
+                       this.isValidPlacement(this.currentX, this.currentY, this.selectedPiece.shape);
+        
+        if (isValid) {
+            // Clear the overlay before placing
+            this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
             
-            // Place the piece on the grid
+            // Snap to grid position for placement
             this.placePiece(this.currentX, this.currentY, this.selectedPiece.shape, this.selectedPiece.color);
             
-            // Add points for placing the piece (1 point per block)
+            const blockCount = this.countBlocksInShape(this.selectedPiece.shape);
             this.score += blockCount;
             this.updateScore();
             
-            // Remove the used piece from options
+            // Remove the used piece and generate a new one
             if (this.selectedPieceIndex !== null) {
                 this.nextPieces.splice(this.selectedPieceIndex, 1);
                 this.generateNextPieces();
             }
             
-            // Check if lines were completed
             this.checkLines();
             
-            // Check for game over
             if (!this.hasValidMoves()) {
                 alert('Game Over! Your score: ' + this.score);
                 this.initGame();
+                return;
             }
+        } else {
+            // Always animate back to original position if not valid or outside grid
+            const startX = this.lastX + this.canvas.getBoundingClientRect().left;
+            const startY = (this.lastY + this.canvas.getBoundingClientRect().top) + 
+                          (this.isTouchDevice ? this.fingerOffset : 0);
+            
+            // Animate back to original position
+            this.startAnimation(
+                startX, startY,
+                this.dragStartRect.left + this.dragStartRect.width / 2,
+                this.dragStartRect.top + this.dragStartRect.height / 2,
+                this.selectedPiece,
+                () => {
+                    this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+                    this.dragging = false;
+                    this.dragStartedFromPiece = false;
+                    this.selectedPiece = null;
+                    this.selectedPieceIndex = null;
+                    this.draw();
+                    this.drawNextPieces();
+                }
+            );
+            return;
         }
         
-        // Reset drag state
+        // Reset states
         this.dragging = false;
         this.dragStartedFromPiece = false;
         this.selectedPiece = null;
         this.selectedPieceIndex = null;
         this.draw();
+        this.drawNextPieces();
     }
     
     countBlocksInShape(shape) {
@@ -545,7 +708,7 @@ class Game {
     
     drawValidPlacement(x, y) {
         // Draw a subtle highlight to show where the piece will be placed
-        this.ctx.fillStyle = 'rgba(76, 175, 80, 0.3)';
+        this.ctx.fillStyle = 'rgba(76, 175, 80, 0.15)'; // Even more transparent
         for (let i = 0; i < this.selectedPiece.shape.length; i++) {
             for (let j = 0; j < this.selectedPiece.shape[i].length; j++) {
                 if (this.selectedPiece.shape[i][j]) {
@@ -562,6 +725,26 @@ class Game {
     
     drawNextPieces() {
         this.nextPieces.forEach((piece, index) => {
+            // Skip drawing the piece that's being dragged
+            if (this.selectedPieceIndex === index && this.dragging) {
+                const canvas = this.nextPieceCanvases[index];
+                const ctx = canvas.getContext('2d');
+                
+                // Clear the canvas
+                canvas.width = 90;
+                canvas.height = 60;
+                
+                // Draw background
+                ctx.fillStyle = '#f8f8f8';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Draw border
+                ctx.strokeStyle = '#ddd';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+            
             const canvas = this.nextPieceCanvases[index];
             const ctx = canvas.getContext('2d');
             
@@ -622,6 +805,64 @@ class Game {
                 }
             }
         });
+    }
+    
+    startAnimation(startX, startY, endX, endY, piece, callback) {
+        this.animating = true;
+        this.animationStartTime = performance.now();
+        this.animationStartPos = { x: startX, y: startY };
+        this.animationEndPos = { x: endX, y: endY };
+        this.animationPiece = piece;
+        this.animationCallback = callback;
+        
+        // Start the animation loop
+        this.animate();
+    }
+    
+    animate(currentTime) {
+        if (!this.animating) return;
+        
+        if (!this.animationStartTime) this.animationStartTime = currentTime;
+        const progress = Math.min(1, (currentTime - this.animationStartTime) / this.animationDuration);
+        
+        // Easing function for smooth animation
+        const easeProgress = this.easeOutBack(progress);
+        
+        // Calculate current position
+        const currentX = this.animationStartPos.x + (this.animationEndPos.x - this.animationStartPos.x) * easeProgress;
+        const currentY = this.animationStartPos.y + (this.animationEndPos.y - this.animationStartPos.y) * easeProgress;
+        
+        // Clear and redraw the game board
+        this.draw();
+        
+        // Clear overlay canvas
+        this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+        
+        // Draw the animating piece on the overlay
+        this.drawDraggedPiece(currentX - this.touchOffsetX, currentY - this.touchOffsetY);
+        
+        if (progress < 1) {
+            // Continue animation
+            requestAnimationFrame(this.animate.bind(this));
+        } else {
+            // Animation complete
+            this.animating = false;
+            this.animationStartTime = null;
+            if (this.animationCallback) {
+                this.animationCallback();
+            }
+        }
+    }
+    
+    easeOutBack(x) {
+        const c1 = 1.70158;
+        const c3 = c1 + 1;
+        return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+    }
+    
+    resizeOverlay() {
+        this.overlayCanvas.width = window.innerWidth;
+        this.overlayCanvas.height = window.innerHeight;
     }
 }
 
