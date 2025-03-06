@@ -1,13 +1,13 @@
-const CACHE_NAME = 'block-puzzle-v1';
+const CACHE_NAME = 'block-puzzle-v1.4.9';
 const urlsToCache = [
-    '/',
-    '/index.html',
-    '/css/styles.css',
-    '/js/game.js',
-    '/js/pwa.js',
-    '/manifest.json',
-    '/assets/icon-192.png',
-    '/assets/icon-512.png'
+    './',
+    './index.html',
+    './css/styles.css',
+    './js/game.js',
+    './js/pwa.js',
+    './manifest.json',
+    './assets/icon-192.png',
+    './assets/icon-512.png'
 ];
 
 // Install event - caches all required assets

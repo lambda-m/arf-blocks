@@ -1,7 +1,9 @@
 // Game Constants
 const GRID_SIZE = 10;
 const BLOCK_COLORS = {
-    I: '#00A5E5',    // Bright blue
+    I: '#00A5E5',    // Bright blue (4-block)
+    I2: '#63C5DA',   // Sky blue (2-block)
+    I3: '#4682B4',   // Steel blue (3-block)
     O1: '#FFB30F',   // Golden yellow
     O2: '#FF7F11',   // Orange
     O3: '#FF3F00',   // Vermillion
@@ -18,7 +20,9 @@ const TOUCH_MARGIN = 40; // Pixels above finger (additional margin)
 // Base shapes without rotations
 const BASE_SHAPES = {
     // Tetris shapes
-    I: [[1, 1, 1, 1]],
+    I: [[1, 1, 1, 1]],       // Classic 4-block line
+    I2: [[1, 1]],            // 2-block line
+    I3: [[1, 1, 1]],         // 3-block line
     O2: [[1, 1], [1, 1]],
     T: [[0, 1, 0], [1, 1, 1]],
     S: [[0, 1, 1], [1, 1, 0]],
@@ -35,6 +39,8 @@ const BASE_SHAPES = {
 // Add these constants at the top of the file
 const PIECE_WEIGHTS = {
     I: 1.0,    // Long piece, good for clearing
+    I2: 1.0,   // Short line, easy to place
+    I3: 1.0,   // Medium line, versatile
     O2: 1.0,   // 2x2 square, standard piece
     T: 1.0,    // T-shape, versatile
     S: 0.9,    // S-shape, slightly less common
@@ -198,6 +204,26 @@ class Game {
         // Clear and regenerate next pieces
         this.nextPieces = [];
         this.generateNextPieces();
+        
+        // Calculate the largest shape dimension to ensure all shapes fit
+        const maxDimension = Math.max(
+            ...Object.values(BASE_SHAPES).map(shape => shape.length),
+            ...Object.values(BASE_SHAPES).map(shape => shape[0].length)
+        );
+        
+        // Make sure all canvases are properly sized and cleared
+        this.nextPieceCanvases.forEach(canvas => {
+            const ctx = canvas.getContext('2d');
+            // More compact size that still fits all shapes
+            canvas.width = 80;
+            canvas.height = 80;
+            
+            // Clear canvas with transparency
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+        
+        // Force a complete redraw of all pieces
+        this.drawNextPieces();
         
         // Redraw the board
         this.draw();
@@ -512,18 +538,39 @@ class Game {
             this.score += blockCount;
             this.updateScore();
             
-            // Remove the used piece and generate a new one
-            if (this.selectedPieceIndex !== null) {
-                this.nextPieces.splice(this.selectedPieceIndex, 1);
-                this.generateNextPieces();
-            }
+            // Save the selected index before resetting it
+            const placedPieceIndex = this.selectedPieceIndex;
             
+            // Reset states immediately to prepare for the next actions
+            this.dragging = false;
+            this.dragStartedFromPiece = false;
+            this.selectedPiece = null;
+            this.selectedPieceIndex = null;
+            
+            // Check for completed lines
             this.checkLines();
             
+            // Generate and replace the used piece immediately
+            if (placedPieceIndex !== null) {
+                // Get a new piece
+                const newPiece = this.getNextPiece();
+                
+                // Insert the new piece at the same index
+                this.nextPieces[placedPieceIndex] = newPiece;
+                
+                // Draw the next pieces immediately
+                this.drawNextPieces();
+            }
+            
+            // Redraw the game board
+            this.draw();
+            
+            // Check if game is over AFTER generating new pieces
             if (!this.hasValidMoves()) {
-                alert('Game Over! Your score: ' + this.score);
-                this.initGame();
-                return;
+                setTimeout(() => {
+                    alert('Game Over! Your score: ' + this.score);
+                    this.initGame();
+                }, 100); // Small delay to ensure UI updates
             }
         } else {
             // Animate back to original position
@@ -547,14 +594,6 @@ class Game {
             );
             return;
         }
-        
-        // Reset states
-        this.dragging = false;
-        this.dragStartedFromPiece = false;
-        this.selectedPiece = null;
-        this.selectedPieceIndex = null;
-        this.draw();
-        this.drawNextPieces();
     }
     
     countBlocksInShape(shape) {
@@ -912,41 +951,51 @@ class Game {
     }
     
     drawNextPieces() {
-        // Calculate maximum possible shape dimensions
-        const maxShapeDimensions = {
-            width: Math.max(...Object.values(BASE_SHAPES).map(shape => shape[0].length)),
-            height: Math.max(...Object.values(BASE_SHAPES).map(shape => shape.length))
-        };
+        // First, determine the maximum piece dimension across all next pieces
+        // This ensures consistent block sizing across all shapes
+        const maxPieceDimensionAcrossAll = Math.max(
+            ...this.nextPieces.map(piece => 
+                Math.max(piece.shape.length, piece.shape[0].length)
+            )
+        );
         
-        this.nextPieces.forEach((piece, index) => {
-            const canvas = this.nextPieceCanvases[index];
+        // Calculate a consistent block size that works for all pieces
+        const commonBlockSize = Math.floor(this.nextPieceCanvases[0].width / (maxPieceDimensionAcrossAll + 1.5));
+        
+        // Clear all next piece canvases
+        this.nextPieceCanvases.forEach((canvas, index) => {
             const ctx = canvas.getContext('2d');
-            
-            // Set canvas size with padding for largest possible shape
-            const blockSize = 15;
-            const padding = blockSize; // One block worth of padding on each side
-            canvas.width = (maxShapeDimensions.width * blockSize) + (padding * 2);
-            canvas.height = (maxShapeDimensions.height * blockSize) + (padding * 2);
-            
-            // Clear canvas with transparent background
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+        
+        // Draw the next pieces
+        this.nextPieceCanvases.forEach((canvas, index) => {
+            if (index >= this.nextPieces.length) return;
             
-            // Draw rounded border
-            ctx.strokeStyle = this.selectedPieceIndex === index ? '#4CAF50' : '#ddd';
-            ctx.lineWidth = this.selectedPieceIndex === index ? 3 : 2;
-            ctx.beginPath();
-            const radius = 10;
-            ctx.roundRect(1, 1, canvas.width - 2, canvas.height - 2, radius);
-            ctx.stroke();
+            const ctx = canvas.getContext('2d');
+            const piece = this.nextPieces[index];
+            
+            if (!piece) {
+                return;
+            }
             
             // Skip rest of drawing if piece is being dragged
             if (this.selectedPieceIndex === index && this.dragging) {
                 return;
             }
             
-            // Center the piece
+            // Use the common block size for all pieces
+            const blockSize = commonBlockSize;
+            
+            // Reset shadow for drawing
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+            
+            // Calculate piece dimensions
             const pieceWidth = piece.shape[0].length * blockSize;
             const pieceHeight = piece.shape.length * blockSize;
+            
+            // Center the piece
             const offsetX = (canvas.width - pieceWidth) / 2;
             const offsetY = (canvas.height - pieceHeight) / 2;
             
