@@ -281,7 +281,20 @@ class Game {
         
         // Calculate dynamic offset based on piece height
         const pieceHeight = this.selectedPiece.shape.length;
-        this.touchOffset = isTouch ? (pieceHeight * this.blockSize) / 2 + TOUCH_MARGIN : 0;
+        
+        // For touch devices, calculate a more precise offset
+        // For even-height pieces, add half a block to center more accurately
+        if (isTouch) {
+            // Base offset is half the piece height plus a fixed margin
+            this.touchOffset = (pieceHeight * this.blockSize) / 2 + TOUCH_MARGIN;
+            
+            // Slight adjustment for even-height pieces to account for center offset
+            if (pieceHeight % 2 === 0) {
+                this.touchOffset += this.blockSize / 2;
+            }
+        } else {
+            this.touchOffset = 0;
+        }
         
         // Set the drag position directly to the current pointer position
         const boardRect = this.canvas.getBoundingClientRect();
@@ -344,22 +357,28 @@ class Game {
             const boardX = visualX - this.boardLeft;
             const boardY = visualY - this.boardTop;
             
-            // Convert board pixels to grid coordinates
-            const gridX = Math.floor(boardX / (this.boardWidth / GRID_SIZE));
-            const gridY = Math.floor(boardY / (this.boardHeight / GRID_SIZE));
-            
-            // Calculate grid offset for the current piece based on its center
             const shape = this.selectedPiece.shape;
-            const offsetX = Math.floor(shape[0].length / 2);
-            const offsetY = Math.floor(shape.length / 2);
             
-            // Top-left corner of the placement
-            this.currentX = gridX - offsetX;
-            this.currentY = gridY - offsetY;
+            // Calculate the cell size
+            const cellSize = this.boardWidth / GRID_SIZE;
+            
+            // For even-width/height pieces, we need to adjust the centering
+            // since their true center falls between grid cells
+            const width = shape[0].length;
+            const height = shape.length;
+            
+            // Calculate the center point of the piece in visual coordinates
+            const pieceCenterX = boardX;
+            const pieceCenterY = boardY;
+            
+            // Calculate the top-left corner of the piece in grid coordinates
+            // This approach aligns the visual center with the grid more precisely
+            this.currentX = Math.round(pieceCenterX / cellSize - width / 2);
+            this.currentY = Math.round(pieceCenterY / cellSize - height / 2);
             
             // Ensure placement is within bounds
-            this.currentX = Math.max(0, Math.min(GRID_SIZE - shape[0].length, this.currentX));
-            this.currentY = Math.max(0, Math.min(GRID_SIZE - shape.length, this.currentY));
+            this.currentX = Math.max(0, Math.min(GRID_SIZE - width, this.currentX));
+            this.currentY = Math.max(0, Math.min(GRID_SIZE - height, this.currentY));
             
             // Check if placement is valid and show indicator
             if (this.isValidPlacement(this.currentX, this.currentY, shape)) {
@@ -395,7 +414,8 @@ class Game {
         const pieceWidth = shape[0].length * cellSize;
         const pieceHeight = shape.length * cellSize;
         
-        // Center the piece on the pointer
+        // Center the piece on the pointer with precise positioning
+        // For even dimensions, this ensures true center alignment
         const left = x - pieceWidth / 2;
         const top = y - pieceHeight / 2;
         
