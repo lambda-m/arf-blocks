@@ -13,6 +13,7 @@ const BLOCK_COLORS = {
     U: '#FF63B6',    // Pink
     L5: '#9B59B6',   // Amethyst purple
 };
+const TOUCH_MARGIN = 40; // Pixels above finger (additional margin)
 
 // Base shapes without rotations
 const BASE_SHAPES = {
@@ -89,23 +90,36 @@ const SHAPES = generateAllRotations(BASE_SHAPES);
 
 class Game {
     constructor() {
+        // Get DOM elements
         this.canvas = document.getElementById('game-board');
         this.ctx = this.canvas.getContext('2d');
         
-        // Create overlay canvas for dragging
+        // Create an overlay canvas for dragging pieces
         this.overlayCanvas = document.createElement('canvas');
+        this.overlayCtx = this.overlayCanvas.getContext('2d');
+        
+        // Style and position the overlay canvas to cover the entire viewport
         this.overlayCanvas.style.position = 'fixed';
         this.overlayCanvas.style.top = '0';
         this.overlayCanvas.style.left = '0';
+        this.overlayCanvas.style.width = '100%';
+        this.overlayCanvas.style.height = '100%';
         this.overlayCanvas.style.pointerEvents = 'none';
         this.overlayCanvas.style.zIndex = '1000';
         document.body.appendChild(this.overlayCanvas);
-        this.overlayCtx = this.overlayCanvas.getContext('2d');
         
-        // Set overlay canvas size to window size
-        this.resizeOverlay();
-        window.addEventListener('resize', () => this.resizeOverlay());
+        // Set overlay canvas dimensions to match window
+        this.overlayCanvas.width = window.innerWidth;
+        this.overlayCanvas.height = window.innerHeight;
         
+        // Handle resize events
+        window.addEventListener('resize', () => {
+            this.overlayCanvas.width = window.innerWidth;
+            this.overlayCanvas.height = window.innerHeight;
+            this.resizeOverlay();
+        });
+        
+        // Get references to the next piece canvases
         this.nextPieceCanvases = [
             document.getElementById('piece-1'),
             document.getElementById('piece-2'),
@@ -134,10 +148,13 @@ class Game {
         this.touchOffsetX = 0;
         this.touchOffsetY = 0;
         
-        // Different offsets for touch vs mouse
-        this.fingerOffset = -100; // Increased offset for even better visibility above finger
-        this.mouseOffset = 0;    // No offset for mouse
-        this.currentOffset = 0;  // Will be set based on input type
+        // Remove all offset-related properties
+        this.mouseOffset = 0;
+        this.fingerOffset = 0;
+        this.currentOffset = 0;
+        
+        // Add cursor style property
+        this.canvas.style.cursor = 'pointer';
         
         // Device detection
         this.isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -195,6 +212,9 @@ class Game {
     
     bindEvents() {
         // Touch events for the game board
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent scrolling
+        }, { passive: false });
         this.canvas.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false });
         this.canvas.addEventListener('touchend', this.handleTouchEnd.bind(this), { passive: false });
         
@@ -225,14 +245,15 @@ class Game {
             });
         });
         
-        // Prevent all default touch behaviors
-        document.addEventListener('touchstart', (e) => {
+        // Prevent all default touch behaviors on game elements
+        const gameContainer = document.getElementById('game-container');
+        gameContainer.addEventListener('touchstart', (e) => {
             if (e.target.tagName !== 'BUTTON') {
                 e.preventDefault();
             }
         }, { passive: false });
         
-        document.addEventListener('touchmove', (e) => {
+        gameContainer.addEventListener('touchmove', (e) => {
             if (e.target.tagName !== 'BUTTON') {
                 e.preventDefault();
             }
@@ -242,6 +263,7 @@ class Game {
         document.getElementById('new-game').addEventListener('click', () => this.initGame());
     }
     
+    // A unified approach to handle all drag-related rendering and positioning
     startDragFromPiece(e, index, isTouch) {
         if (index >= this.nextPieces.length) return;
         
@@ -250,89 +272,185 @@ class Game {
         this.dragging = true;
         this.dragStartedFromPiece = true;
         
-        // Store the original canvas and its position for return animation
+        // Store the original canvas for return animation
         this.dragStartCanvas = this.nextPieceCanvases[index];
         this.dragStartRect = this.dragStartCanvas.getBoundingClientRect();
         
-        // Set the appropriate offset for touch or mouse
-        this.currentOffset = isTouch ? this.fingerOffset : this.mouseOffset;
+        // Track if dragging with touch
+        this.isDraggingWithTouch = isTouch;
         
-        // Calculate initial position
-        let x, y;
+        // Calculate dynamic offset based on piece height
+        const pieceHeight = this.selectedPiece.shape.length;
+        this.touchOffset = isTouch ? (pieceHeight * this.blockSize) / 2 + TOUCH_MARGIN : 0;
+        
+        // Set the drag position directly to the current pointer position
+        const boardRect = this.canvas.getBoundingClientRect();
+        
         if (isTouch) {
             const touch = e.touches[0];
-            const boardRect = this.canvas.getBoundingClientRect();
-            x = touch.clientX - boardRect.left;
-            y = touch.clientY - boardRect.top;
-            
-            // Calculate touch point relative to the piece center
-            const pieceWidth = this.selectedPiece.shape[0].length * this.blockSize;
-            const pieceHeight = this.selectedPiece.shape.length * this.blockSize;
-            this.touchOffsetX = pieceWidth / 2;
-            this.touchOffsetY = pieceHeight / 2;
+            this.dragX = touch.clientX;
+            this.dragY = touch.clientY;
         } else {
-            const boardRect = this.canvas.getBoundingClientRect();
-            x = e.clientX - boardRect.left;
-            y = e.clientY - boardRect.top;
-            
-            // Calculate mouse point relative to the piece center
-            const pieceWidth = this.selectedPiece.shape[0].length * this.blockSize;
-            const pieceHeight = this.selectedPiece.shape.length * this.blockSize;
-            this.touchOffsetX = pieceWidth / 2;
-            this.touchOffsetY = pieceHeight / 2;
+            this.dragX = e.clientX;
+            this.dragY = e.clientY;
         }
         
-        // Start dragging from the original piece position
-        const startRect = this.dragStartRect;
-        const boardRect = this.canvas.getBoundingClientRect();
-        this.lastX = startRect.left - boardRect.left + startRect.width / 2;
-        this.lastY = startRect.top - boardRect.top + startRect.height / 2;
+        // Calculate screen coordinates of the game board for placement calculation
+        this.boardLeft = boardRect.left;
+        this.boardTop = boardRect.top;
+        this.boardRight = boardRect.right;
+        this.boardBottom = boardRect.bottom;
+        this.boardWidth = boardRect.width;
+        this.boardHeight = boardRect.height;
         
-        // Update position and clear original piece
-        this.updateDragPosition(x, y);
+        // Draw the piece and update game state
+        this.updateDragState();
         this.drawNextPieces();
     }
     
-    handlePieceDragMove(e) {
+    // A unified handler for all pointer movement
+    updateDragPosition(clientX, clientY) {
         if (!this.dragging || !this.selectedPiece) return;
         
-        const boardRect = this.canvas.getBoundingClientRect();
-        let x, y;
+        // Update drag position
+        this.dragX = clientX;
+        this.dragY = clientY;
         
-        if (e.type.startsWith('touch')) {
-            const touch = e.touches[0];
-            x = touch.clientX - boardRect.left;
-            y = touch.clientY - boardRect.top;
+        // Update the drag state
+        this.updateDragState();
+    }
+    
+    // Process the current drag position and update game state
+    updateDragState() {
+        // Clear the overlay
+        this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+        
+        // Apply dynamic touch offset to get the visual position
+        let visualX = this.dragX;
+        let visualY = this.dragY - (this.touchOffset || 0);
+        
+        // Check if the VISUAL position (after offset) is over the game board
+        const isOverBoard = 
+            visualX >= this.boardLeft && 
+            visualX <= this.boardRight && 
+            visualY >= this.boardTop && 
+            visualY <= this.boardBottom;
+        
+        // Draw the game board
+        this.draw();
+        
+        if (isOverBoard) {
+            // Calculate grid position based on VISUAL position (including offset)
+            const boardX = visualX - this.boardLeft;
+            const boardY = visualY - this.boardTop;
+            
+            // Convert board pixels to grid coordinates
+            const gridX = Math.floor(boardX / (this.boardWidth / GRID_SIZE));
+            const gridY = Math.floor(boardY / (this.boardHeight / GRID_SIZE));
+            
+            // Calculate grid offset for the current piece based on its center
+            const shape = this.selectedPiece.shape;
+            const offsetX = Math.floor(shape[0].length / 2);
+            const offsetY = Math.floor(shape.length / 2);
+            
+            // Top-left corner of the placement
+            this.currentX = gridX - offsetX;
+            this.currentY = gridY - offsetY;
+            
+            // Ensure placement is within bounds
+            this.currentX = Math.max(0, Math.min(GRID_SIZE - shape[0].length, this.currentX));
+            this.currentY = Math.max(0, Math.min(GRID_SIZE - shape.length, this.currentY));
+            
+            // Check if placement is valid and show indicator
+            if (this.isValidPlacement(this.currentX, this.currentY, shape)) {
+                this.drawValidPlacement(this.currentX, this.currentY);
+            }
+            
+            // Hide cursor
+            this.canvas.style.cursor = 'none';
         } else {
-            x = e.clientX - boardRect.left;
-            y = e.clientY - boardRect.top;
+            // Reset placement position
+            this.currentX = -1;
+            this.currentY = -1;
+            this.canvas.style.cursor = 'pointer';
         }
         
-        this.updateDragPosition(x, y);
+        // Draw the piece at the VISUAL position (which already includes the offset)
+        this.drawDraggedPiece(visualX, visualY);
     }
     
-    handlePieceDragEnd(e) {
-        if (this.dragging && this.selectedPiece) {
-            this.endDrag();
+    // Draw the dragged piece at the given screen coordinates
+    drawDraggedPiece(x, y) {
+        if (!this.selectedPiece) return;
+        
+        // Note: x,y are the visual positions with the touch offset already applied
+        // in updateDragState - we use these directly without further adjustment
+        
+        const shape = this.selectedPiece.shape;
+        const color = this.selectedPiece.color;
+        
+        // Calculate the dimensions of the piece on screen
+        // Use the same scale as the game board
+        const cellSize = this.boardWidth / GRID_SIZE;
+        const pieceWidth = shape[0].length * cellSize;
+        const pieceHeight = shape.length * cellSize;
+        
+        // Center the piece on the pointer
+        const left = x - pieceWidth / 2;
+        const top = y - pieceHeight / 2;
+        
+        // Draw each block
+        this.overlayCtx.globalAlpha = 0.9;
+        
+        for (let row = 0; row < shape.length; row++) {
+            for (let col = 0; col < shape[row].length; col++) {
+                if (shape[row][col]) {
+                    const blockX = left + col * cellSize;
+                    const blockY = top + row * cellSize;
+                    
+                    // Draw a block with 3D effect
+                    const shrinkAmount = 4;
+                    
+                    // Main block
+                    this.overlayCtx.fillStyle = color;
+                    this.overlayCtx.fillRect(
+                        blockX + shrinkAmount,
+                        blockY + shrinkAmount,
+                        cellSize - shrinkAmount * 2,
+                        cellSize - shrinkAmount * 2
+                    );
+                    
+                    // Top-left highlight
+                    this.overlayCtx.fillStyle = this.lightenColor(color, 30);
+                    this.overlayCtx.beginPath();
+                    this.overlayCtx.moveTo(blockX + shrinkAmount, blockY + shrinkAmount);
+                    this.overlayCtx.lineTo(blockX + cellSize - shrinkAmount, blockY + shrinkAmount);
+                    this.overlayCtx.lineTo(blockX + shrinkAmount, blockY + cellSize - shrinkAmount);
+                    this.overlayCtx.closePath();
+                    this.overlayCtx.fill();
+                    
+                    // Bottom-right shadow
+                    this.overlayCtx.fillStyle = this.darkenColor(color, 20);
+                    this.overlayCtx.beginPath();
+                    this.overlayCtx.moveTo(blockX + cellSize - shrinkAmount, blockY + shrinkAmount);
+                    this.overlayCtx.lineTo(blockX + cellSize - shrinkAmount, blockY + cellSize - shrinkAmount);
+                    this.overlayCtx.lineTo(blockX + shrinkAmount, blockY + cellSize - shrinkAmount);
+                    this.overlayCtx.closePath();
+                    this.overlayCtx.fill();
+                }
+            }
         }
         
-        // Remove the temporary document-level listeners
-        document.removeEventListener('touchmove', this.handlePieceDragMove.bind(this));
-        document.removeEventListener('touchend', this.handlePieceDragEnd.bind(this));
-        document.removeEventListener('mousemove', this.handlePieceDragMove.bind(this));
-        document.removeEventListener('mouseup', this.handlePieceDragEnd.bind(this));
+        this.overlayCtx.globalAlpha = 1.0;
     }
     
+    // Simplify all touch and mouse handlers to use the unified system
     handleTouchMove(e) {
         e.preventDefault();
         if (!this.dragging || !this.selectedPiece) return;
         
         const touch = e.touches[0];
-        const rect = this.canvas.getBoundingClientRect();
-        const x = touch.clientX - rect.left;
-        const y = touch.clientY - rect.top;
-        
-        this.updateDragPosition(x, y);
+        this.updateDragPosition(touch.clientX, touch.clientY);
     }
     
     handleTouchEnd(e) {
@@ -344,12 +462,7 @@ class Game {
     
     handleMouseMove(e) {
         if (!this.dragging || !this.selectedPiece) return;
-        
-        const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        
-        this.updateDragPosition(x, y);
+        this.updateDragPosition(e.clientX, e.clientY);
     }
     
     handleMouseUp(e) {
@@ -358,100 +471,11 @@ class Game {
         }
     }
     
-    updateDragPosition(x, y) {
-        this.lastX = x;
-        this.lastY = y;
-        
-        // Clear overlay canvas
-        this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-        
-        // Apply the finger offset for touch devices before any calculations
-        const adjustedY = this.isTouchDevice ? y + this.fingerOffset : y;
-        
-        // Calculate the visual position where the piece will be drawn
-        const visualX = x - this.touchOffsetX;
-        const visualY = adjustedY - this.touchOffsetY;
-        
-        // Calculate grid position based on the center of the blocks
-        const gridX = Math.floor((visualX + this.blockSize / 2) / this.blockSize);
-        const gridY = Math.floor((visualY + this.blockSize / 2) / this.blockSize);
-        
-        const screenX = x + this.canvas.getBoundingClientRect().left;
-        const screenY = adjustedY + this.canvas.getBoundingClientRect().top;
-        
-        const boardRect = this.canvas.getBoundingClientRect();
-        const isOverGrid = x >= 0 && x < boardRect.width && 
-                          adjustedY >= 0 && adjustedY < boardRect.height;
-        
-        if (isOverGrid) {
-            this.currentX = gridX;
-            this.currentY = gridY;
-            
-            this.draw();
-            
-            if (this.isValidPlacement(gridX, gridY, this.selectedPiece.shape)) {
-                this.drawValidPlacement(gridX, gridY);
-            }
-        } else {
-            this.currentX = -1;
-            this.currentY = -1;
-            this.draw();
-        }
-        
-        // Always draw the dragged piece
-        this.drawDraggedPiece(screenX - this.touchOffsetX, screenY - this.touchOffsetY);
-    }
-    
-    drawDraggedPiece(x, y) {
-        if (!this.selectedPiece) return;
-        
-        const scaleFactor = this.blockSize / 15;
-        const blockSize = 15 * scaleFactor;
-        
-        this.overlayCtx.globalAlpha = 1;
-        
-        const shape = this.selectedPiece.shape;
-        const color = this.selectedPiece.color;
-        
-        // Make blocks slightly smaller while dragging for better visibility
-        const shrinkAmount = 4;
-        
-        for (let i = 0; i < shape.length; i++) {
-            for (let j = 0; j < shape[i].length; j++) {
-                if (shape[i][j]) {
-                    // Main block with reduced size
-                    this.overlayCtx.fillStyle = color;
-                    this.overlayCtx.fillRect(
-                        x + j * blockSize + shrinkAmount,
-                        y + i * blockSize + shrinkAmount,
-                        blockSize - (shrinkAmount * 2),
-                        blockSize - (shrinkAmount * 2)
-                    );
-                    
-                    // Highlight (top-left)
-                    this.overlayCtx.fillStyle = this.lightenColor(color, 30);
-                    this.overlayCtx.beginPath();
-                    this.overlayCtx.moveTo(x + j * blockSize + shrinkAmount, y + i * blockSize + shrinkAmount);
-                    this.overlayCtx.lineTo(x + (j + 1) * blockSize - shrinkAmount - 1, y + i * blockSize + shrinkAmount);
-                    this.overlayCtx.lineTo(x + j * blockSize + shrinkAmount, y + (i + 1) * blockSize - shrinkAmount - 1);
-                    this.overlayCtx.closePath();
-                    this.overlayCtx.fill();
-                    
-                    // Shadow (bottom-right)
-                    this.overlayCtx.fillStyle = this.darkenColor(color, 20);
-                    this.overlayCtx.beginPath();
-                    this.overlayCtx.moveTo(x + (j + 1) * blockSize - shrinkAmount - 1, y + i * blockSize + shrinkAmount);
-                    this.overlayCtx.lineTo(x + (j + 1) * blockSize - shrinkAmount - 1, y + (i + 1) * blockSize - shrinkAmount - 1);
-                    this.overlayCtx.lineTo(x + j * blockSize + shrinkAmount, y + (i + 1) * blockSize - shrinkAmount - 1);
-                    this.overlayCtx.closePath();
-                    this.overlayCtx.fill();
-                }
-            }
-        }
-    }
-    
     endDrag() {
         if (!this.selectedPiece) return;
+        
+        // Restore cursor
+        this.canvas.style.cursor = 'pointer';
         
         // Check if the piece is over the grid and in a valid position
         const isValid = this.currentX >= 0 && this.currentY >= 0 && 
@@ -461,7 +485,7 @@ class Game {
             // Clear the overlay before placing
             this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
             
-            // Snap to grid position for placement
+            // Place the piece at the grid position
             this.placePiece(this.currentX, this.currentY, this.selectedPiece.shape, this.selectedPiece.color);
             
             const blockCount = this.countBlocksInShape(this.selectedPiece.shape);
@@ -482,12 +506,10 @@ class Game {
                 return;
             }
         } else {
-            // Always animate back to original position if not valid or outside grid
-            const startX = this.lastX + this.canvas.getBoundingClientRect().left;
-            const startY = (this.lastY + this.canvas.getBoundingClientRect().top) + 
-                          (this.isTouchDevice ? this.fingerOffset : 0);
-            
             // Animate back to original position
+            const startX = this.lastX + this.canvas.getBoundingClientRect().left;
+            const startY = this.lastY + this.canvas.getBoundingClientRect().top;
+            
             this.startAnimation(
                 startX, startY,
                 this.dragStartRect.left + this.dragStartRect.width / 2,
@@ -977,7 +999,7 @@ class Game {
         this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
         
         // Draw the animating piece on the overlay
-        this.drawDraggedPiece(currentX - this.touchOffsetX, currentY - this.touchOffsetY);
+        this.drawDraggedPiece(currentX, currentY);
         
         if (progress < 1) {
             // Continue animation
@@ -1094,6 +1116,30 @@ class Game {
             shape: randomRotation,
             color: BLOCK_COLORS[selectedKey]
         };
+    }
+    
+    // Update the piece drag handler
+    handlePieceDragMove(e) {
+        if (!this.dragging || !this.selectedPiece) return;
+        
+        if (e.type.startsWith('touch')) {
+            const touch = e.touches[0];
+            this.updateDragPosition(touch.clientX, touch.clientY);
+        } else {
+            this.updateDragPosition(e.clientX, e.clientY);
+        }
+    }
+    
+    handlePieceDragEnd(e) {
+        if (this.dragging && this.selectedPiece) {
+            this.endDrag();
+        }
+        
+        // Remove the temporary document-level listeners
+        document.removeEventListener('touchmove', this.handlePieceDragMove.bind(this));
+        document.removeEventListener('touchend', this.handlePieceDragEnd.bind(this));
+        document.removeEventListener('mousemove', this.handlePieceDragMove.bind(this));
+        document.removeEventListener('mouseup', this.handlePieceDragEnd.bind(this));
     }
 }
 
