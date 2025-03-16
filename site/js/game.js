@@ -726,32 +726,33 @@ class Game {
     }
     
     createClearEffect(positions, lineCount) {
-        const particles = [];
-        const particlesPerCell = 8 + (lineCount * 2); // More particles for more lines
+        // Store the original blocks for the animation
+        const blocks = [];
         
-        // Create particles for each cleared cell
+        // Create block objects for each cleared cell
         positions.forEach(pos => {
-            for (let i = 0; i < particlesPerCell; i++) {
-                particles.push({
-                    x: (pos.x + 0.5) * this.blockSize,
-                    y: (pos.y + 0.5) * this.blockSize,
-                    color: pos.color,
-                    size: Math.random() * 4 + 2,
-                    speedX: (Math.random() - 0.5) * (6 + lineCount * 2),
-                    speedY: (Math.random() - 0.5) * (6 + lineCount * 2),
-                    life: 1.0,
-                    rotation: Math.random() * Math.PI * 2
-                });
-            }
+            blocks.push({
+                x: (pos.x + 0.5) * this.blockSize,  // Center position
+                y: (pos.y + 0.5) * this.blockSize,  // Center position
+                originalColor: pos.color,
+                currentColor: pos.color,
+                size: this.blockSize,               // Start at full size
+                rotation: 0,                        // Initial rotation
+                opacity: 1.0,                       // Start fully visible
+                bevelSize: Math.max(3, Math.floor(this.blockSize * 0.15))
+            });
         });
         
         // Animation timing
         const startTime = performance.now();
-        const duration = 600 + (lineCount * 100); // Longer animation for more lines
+        const duration = 800 + (lineCount * 100); // Longer animation for more lines
+        const flashDuration = duration * 0.2;     // Initial flash phase
         
         // Animation function
         const animate = (currentTime) => {
-            const progress = (currentTime - startTime) / duration;
+            const elapsed = currentTime - startTime;
+            const progress = elapsed / duration;
+            const flashProgress = Math.min(1, elapsed / flashDuration);
             
             if (progress < 1) {
                 // Clear canvas
@@ -760,29 +761,105 @@ class Game {
                 // Draw regular grid and blocks
                 this.draw();
                 
-                // Draw particles
-                particles.forEach(particle => {
-                    // Update particle position
-                    particle.x += particle.speedX;
-                    particle.y += particle.speedY;
-                    particle.rotation += 0.1;
-                    particle.life = 1 - progress;
-                    particle.size *= 0.99;
+                // Draw animated blocks
+                blocks.forEach(block => {
+                    // Phase 1: Flash to white
+                    if (flashProgress < 1) {
+                        // Transition from original color to white
+                        block.currentColor = this.blendColors(
+                            block.originalColor, 
+                            '#FFFFFF', 
+                            flashProgress
+                        );
+                        // Slightly increase size for "pop" effect
+                        const scaleFactor = 1 + (flashProgress * 0.1);
+                        block.size = this.blockSize * scaleFactor;
+                    } else {
+                        // Phase 2: Rotate, shrink and fade
+                        const phase2Progress = (progress - 0.2) / 0.8; // Normalize to 0-1
+                        
+                        // Accelerating rotation
+                        block.rotation = phase2Progress * phase2Progress * Math.PI * 4; // Up to 2 full rotations
+                        
+                        // Shrink size
+                        block.size = this.blockSize * (1 - phase2Progress * 0.9);
+                        
+                        // Fade out
+                        block.opacity = 1 - phase2Progress;
+                        
+                        // Transition from white to a lighter version of original color
+                        block.currentColor = this.blendColors(
+                            '#FFFFFF',
+                            this.lightenColor(block.originalColor, 50),
+                            phase2Progress
+                        );
+                    }
                     
-                    // Draw particle
+                    // Draw the rotating block with beveled edges
                     this.ctx.save();
-                    this.ctx.translate(particle.x, particle.y);
-                    this.ctx.rotate(particle.rotation);
-                    this.ctx.globalAlpha = particle.life * 0.7;
                     
-                    // Create gradient for particle
-                    const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, particle.size);
-                    gradient.addColorStop(0, particle.color);
-                    gradient.addColorStop(1, this.lightenColor(particle.color, 50));
+                    // Move to block center, rotate, then draw
+                    this.ctx.translate(block.x, block.y);
+                    this.ctx.rotate(block.rotation);
+                    this.ctx.globalAlpha = block.opacity;
                     
-                    this.ctx.fillStyle = gradient;
-                    this.ctx.fillRect(-particle.size/2, -particle.size/2, 
-                                    particle.size, particle.size);
+                    const halfSize = block.size / 2;
+                    const bevelSize = block.bevelSize * (block.size / this.blockSize); // Scale bevel with block
+                    
+                    // Main face (center square)
+                    this.ctx.fillStyle = block.currentColor;
+                    this.ctx.fillRect(
+                        -halfSize + bevelSize, 
+                        -halfSize + bevelSize, 
+                        block.size - bevelSize * 2, 
+                        block.size - bevelSize * 2
+                    );
+                    
+                    // Add glow effect
+                    if (flashProgress < 1) {
+                        this.ctx.shadowColor = 'white';
+                        this.ctx.shadowBlur = 15 * flashProgress;
+                    }
+                    
+                    // Top bevel (lighter)
+                    this.ctx.fillStyle = this.lightenColor(block.currentColor, 30);
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-halfSize, -halfSize);
+                    this.ctx.lineTo(halfSize, -halfSize);
+                    this.ctx.lineTo(halfSize - bevelSize, -halfSize + bevelSize);
+                    this.ctx.lineTo(-halfSize + bevelSize, -halfSize + bevelSize);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+                    
+                    // Left bevel (lighter)
+                    this.ctx.fillStyle = this.lightenColor(block.currentColor, 15);
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-halfSize, -halfSize);
+                    this.ctx.lineTo(-halfSize, halfSize);
+                    this.ctx.lineTo(-halfSize + bevelSize, halfSize - bevelSize);
+                    this.ctx.lineTo(-halfSize + bevelSize, -halfSize + bevelSize);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+                    
+                    // Right bevel (darker)
+                    this.ctx.fillStyle = this.darkenColor(block.currentColor, 15);
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(halfSize, -halfSize);
+                    this.ctx.lineTo(halfSize, halfSize);
+                    this.ctx.lineTo(halfSize - bevelSize, halfSize - bevelSize);
+                    this.ctx.lineTo(halfSize - bevelSize, -halfSize + bevelSize);
+                    this.ctx.closePath();
+                    this.ctx.fill();
+                    
+                    // Bottom bevel (darker)
+                    this.ctx.fillStyle = this.darkenColor(block.currentColor, 30);
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(-halfSize, halfSize);
+                    this.ctx.lineTo(halfSize, halfSize);
+                    this.ctx.lineTo(halfSize - bevelSize, halfSize - bevelSize);
+                    this.ctx.lineTo(-halfSize + bevelSize, halfSize - bevelSize);
+                    this.ctx.closePath();
+                    this.ctx.fill();
                     
                     this.ctx.restore();
                 });
@@ -796,6 +873,30 @@ class Game {
         
         // Start animation
         requestAnimationFrame(animate);
+    }
+    
+    // Helper function to blend between two colors
+    blendColors(color1, color2, ratio) {
+        // Parse the colors
+        const c1 = parseInt(color1.slice(1), 16);
+        const c2 = parseInt(color2.slice(1), 16);
+        
+        // Extract RGB components
+        const r1 = (c1 >> 16) & 0xFF;
+        const g1 = (c1 >> 8) & 0xFF;
+        const b1 = c1 & 0xFF;
+        
+        const r2 = (c2 >> 16) & 0xFF;
+        const g2 = (c2 >> 8) & 0xFF;
+        const b2 = c2 & 0xFF;
+        
+        // Blend the colors
+        const r = Math.round(r1 + (r2 - r1) * ratio);
+        const g = Math.round(g1 + (g2 - g1) * ratio);
+        const b = Math.round(b1 + (b2 - b1) * ratio);
+        
+        // Convert back to hex
+        return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
     }
     
     updateScore() {
