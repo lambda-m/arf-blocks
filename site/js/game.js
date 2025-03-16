@@ -12,6 +12,7 @@ const BLOCK_COLORS = {
     Z: '#E74C3C',    // Crimson red
     J: '#3498DB',    // Ocean blue
     L: '#F39C12',    // Amber
+    L3: '#D35400',   // Burnt orange (new 3-block L shape)
     U: '#FF63B6',    // Pink
     L5: '#9B59B6',   // Amethyst purple
 };
@@ -30,6 +31,7 @@ const BASE_SHAPES = {
     J: [[1, 0, 0], [1, 1, 1]],
     L: [[0, 0, 1], [1, 1, 1]],
     // Additional shapes
+    L3: [[1, 0], [1, 1]],    // 3-block L shape
     U: [[1, 0, 1], [1, 1, 1]],
     L5: [[1, 0, 0], [1, 0, 0], [1, 1, 1]],
     O1: [[1]],
@@ -47,6 +49,7 @@ const PIECE_WEIGHTS = {
     Z: 0.9,    // Z-shape, slightly less common
     J: 1.0,    // J-shape, standard piece
     L: 1.0,    // L-shape, standard piece
+    L3: 0.9,   // 3-block L shape, slightly less common
     U: 0.7,    // U-shape, more specialized
     L5: 0.8,   // L5-shape, more specialized
     O1: 0.3,   // 1x1, rare piece
@@ -454,33 +457,55 @@ class Game {
                     const blockX = left + col * cellSize;
                     const blockY = top + row * cellSize;
                     
-                    // Draw a block with 3D effect
-                    const shrinkAmount = 4;
+                    // Size of the bevel (edge)
+                    const bevelSize = Math.max(3, Math.floor(cellSize * 0.15));
                     
-                    // Main block
+                    // Main face (center square)
                     this.overlayCtx.fillStyle = color;
                     this.overlayCtx.fillRect(
-                        blockX + shrinkAmount,
-                        blockY + shrinkAmount,
-                        cellSize - shrinkAmount * 2,
-                        cellSize - shrinkAmount * 2
+                        blockX + bevelSize, 
+                        blockY + bevelSize, 
+                        cellSize - bevelSize * 2, 
+                        cellSize - bevelSize * 2
                     );
                     
-                    // Top-left highlight
+                    // Top bevel (lighter)
                     this.overlayCtx.fillStyle = this.lightenColor(color, 30);
                     this.overlayCtx.beginPath();
-                    this.overlayCtx.moveTo(blockX + shrinkAmount, blockY + shrinkAmount);
-                    this.overlayCtx.lineTo(blockX + cellSize - shrinkAmount, blockY + shrinkAmount);
-                    this.overlayCtx.lineTo(blockX + shrinkAmount, blockY + cellSize - shrinkAmount);
+                    this.overlayCtx.moveTo(blockX, blockY);                           // Top-left outer
+                    this.overlayCtx.lineTo(blockX + cellSize, blockY);                    // Top-right outer
+                    this.overlayCtx.lineTo(blockX + cellSize - bevelSize, blockY + bevelSize);  // Top-right inner
+                    this.overlayCtx.lineTo(blockX + bevelSize, blockY + bevelSize);         // Top-left inner
                     this.overlayCtx.closePath();
                     this.overlayCtx.fill();
                     
-                    // Bottom-right shadow
-                    this.overlayCtx.fillStyle = this.darkenColor(color, 20);
+                    // Left bevel (lighter)
+                    this.overlayCtx.fillStyle = this.lightenColor(color, 15);
                     this.overlayCtx.beginPath();
-                    this.overlayCtx.moveTo(blockX + cellSize - shrinkAmount, blockY + shrinkAmount);
-                    this.overlayCtx.lineTo(blockX + cellSize - shrinkAmount, blockY + cellSize - shrinkAmount);
-                    this.overlayCtx.lineTo(blockX + shrinkAmount, blockY + cellSize - shrinkAmount);
+                    this.overlayCtx.moveTo(blockX, blockY);                           // Top-left outer
+                    this.overlayCtx.lineTo(blockX, blockY + cellSize);                    // Bottom-left outer
+                    this.overlayCtx.lineTo(blockX + bevelSize, blockY + cellSize - bevelSize);  // Bottom-left inner
+                    this.overlayCtx.lineTo(blockX + bevelSize, blockY + bevelSize);         // Top-left inner
+                    this.overlayCtx.closePath();
+                    this.overlayCtx.fill();
+                    
+                    // Right bevel (darker)
+                    this.overlayCtx.fillStyle = this.darkenColor(color, 15);
+                    this.overlayCtx.beginPath();
+                    this.overlayCtx.moveTo(blockX + cellSize, blockY);                    // Top-right outer
+                    this.overlayCtx.lineTo(blockX + cellSize, blockY + cellSize);             // Bottom-right outer
+                    this.overlayCtx.lineTo(blockX + cellSize - bevelSize, blockY + cellSize - bevelSize); // Bottom-right inner
+                    this.overlayCtx.lineTo(blockX + cellSize - bevelSize, blockY + bevelSize);        // Top-right inner
+                    this.overlayCtx.closePath();
+                    this.overlayCtx.fill();
+                    
+                    // Bottom bevel (darker)
+                    this.overlayCtx.fillStyle = this.darkenColor(color, 30);
+                    this.overlayCtx.beginPath();
+                    this.overlayCtx.moveTo(blockX, blockY + cellSize);                    // Bottom-left outer
+                    this.overlayCtx.lineTo(blockX + cellSize, blockY + cellSize);             // Bottom-right outer
+                    this.overlayCtx.lineTo(blockX + cellSize - bevelSize, blockY + cellSize - bevelSize); // Bottom-right inner
+                    this.overlayCtx.lineTo(blockX + bevelSize, blockY + cellSize - bevelSize);        // Bottom-left inner
                     this.overlayCtx.closePath();
                     this.overlayCtx.fill();
                 }
@@ -815,33 +840,71 @@ class Game {
     }
     
     drawBlock(x, y, color, isPreview = false) {
-        // Main block
-        this.ctx.fillStyle = color;
-        this.ctx.fillRect(
-            x * this.blockSize + 1, 
-            y * this.blockSize + 1, 
-            this.blockSize - 2, 
-            this.blockSize - 2
-        );
+        const blockX = x * this.blockSize;
+        const blockY = y * this.blockSize;
+        const size = this.blockSize;
+        
+        // Size of the bevel (edge)
+        const bevelSize = Math.max(3, Math.floor(size * 0.15));
         
         if (!isPreview) {
-            // Highlight (top-left)
+            // Main face (center square)
+            this.ctx.fillStyle = color;
+            this.ctx.fillRect(
+                blockX + bevelSize, 
+                blockY + bevelSize, 
+                size - bevelSize * 2, 
+                size - bevelSize * 2
+            );
+            
+            // Top bevel (lighter)
             this.ctx.fillStyle = this.lightenColor(color, 30);
             this.ctx.beginPath();
-            this.ctx.moveTo(x * this.blockSize + 1, y * this.blockSize + 1);
-            this.ctx.lineTo((x + 1) * this.blockSize - 1, y * this.blockSize + 1);
-            this.ctx.lineTo(x * this.blockSize + 1, (y + 1) * this.blockSize - 1);
+            this.ctx.moveTo(blockX, blockY);                           // Top-left outer
+            this.ctx.lineTo(blockX + size, blockY);                    // Top-right outer
+            this.ctx.lineTo(blockX + size - bevelSize, blockY + bevelSize);  // Top-right inner
+            this.ctx.lineTo(blockX + bevelSize, blockY + bevelSize);         // Top-left inner
             this.ctx.closePath();
             this.ctx.fill();
             
-            // Shadow (bottom-right)
-            this.ctx.fillStyle = this.darkenColor(color, 20);
+            // Left bevel (lighter)
+            this.ctx.fillStyle = this.lightenColor(color, 15);
             this.ctx.beginPath();
-            this.ctx.moveTo((x + 1) * this.blockSize - 1, y * this.blockSize + 1);
-            this.ctx.lineTo((x + 1) * this.blockSize - 1, (y + 1) * this.blockSize - 1);
-            this.ctx.lineTo(x * this.blockSize + 1, (y + 1) * this.blockSize - 1);
+            this.ctx.moveTo(blockX, blockY);                           // Top-left outer
+            this.ctx.lineTo(blockX, blockY + size);                    // Bottom-left outer
+            this.ctx.lineTo(blockX + bevelSize, blockY + size - bevelSize);  // Bottom-left inner
+            this.ctx.lineTo(blockX + bevelSize, blockY + bevelSize);         // Top-left inner
             this.ctx.closePath();
             this.ctx.fill();
+            
+            // Right bevel (darker)
+            this.ctx.fillStyle = this.darkenColor(color, 15);
+            this.ctx.beginPath();
+            this.ctx.moveTo(blockX + size, blockY);                    // Top-right outer
+            this.ctx.lineTo(blockX + size, blockY + size);             // Bottom-right outer
+            this.ctx.lineTo(blockX + size - bevelSize, blockY + size - bevelSize); // Bottom-right inner
+            this.ctx.lineTo(blockX + size - bevelSize, blockY + bevelSize);        // Top-right inner
+            this.ctx.closePath();
+            this.ctx.fill();
+            
+            // Bottom bevel (darker)
+            this.ctx.fillStyle = this.darkenColor(color, 30);
+            this.ctx.beginPath();
+            this.ctx.moveTo(blockX, blockY + size);                    // Bottom-left outer
+            this.ctx.lineTo(blockX + size, blockY + size);             // Bottom-right outer
+            this.ctx.lineTo(blockX + size - bevelSize, blockY + size - bevelSize); // Bottom-right inner
+            this.ctx.lineTo(blockX + bevelSize, blockY + size - bevelSize);        // Bottom-left inner
+            this.ctx.closePath();
+            this.ctx.fill();
+        } else {
+            // Simplified version for preview
+            this.ctx.fillStyle = color;
+            this.ctx.fillRect(
+                blockX + 1, 
+                blockY + 1, 
+                size - 2, 
+                size - 2
+            );
         }
     }
     
@@ -1004,30 +1067,58 @@ class Game {
             for (let i = 0; i < piece.shape.length; i++) {
                 for (let j = 0; j < piece.shape[i].length; j++) {
                     if (piece.shape[i][j]) {
-                        // Main block
+                        const blockX = offsetX + j * blockSize;
+                        const blockY = offsetY + i * blockSize;
+                        
+                        // Size of the bevel (edge)
+                        const bevelSize = Math.max(2, Math.floor(blockSize * 0.15));
+                        
+                        // Main face (center square)
                         ctx.fillStyle = color;
                         ctx.fillRect(
-                            offsetX + j * blockSize,
-                            offsetY + i * blockSize,
-                            blockSize - 1,
-                            blockSize - 1
+                            blockX + bevelSize, 
+                            blockY + bevelSize, 
+                            blockSize - bevelSize * 2, 
+                            blockSize - bevelSize * 2
                         );
                         
-                        // Highlight (top-left)
+                        // Top bevel (lighter)
                         ctx.fillStyle = this.lightenColor(color, 30);
                         ctx.beginPath();
-                        ctx.moveTo(offsetX + j * blockSize, offsetY + i * blockSize);
-                        ctx.lineTo(offsetX + (j + 1) * blockSize - 1, offsetY + i * blockSize);
-                        ctx.lineTo(offsetX + j * blockSize, offsetY + (i + 1) * blockSize - 1);
+                        ctx.moveTo(blockX, blockY);                           // Top-left outer
+                        ctx.lineTo(blockX + blockSize, blockY);                    // Top-right outer
+                        ctx.lineTo(blockX + blockSize - bevelSize, blockY + bevelSize);  // Top-right inner
+                        ctx.lineTo(blockX + bevelSize, blockY + bevelSize);         // Top-left inner
                         ctx.closePath();
                         ctx.fill();
                         
-                        // Shadow (bottom-right)
-                        ctx.fillStyle = this.darkenColor(color, 20);
+                        // Left bevel (lighter)
+                        ctx.fillStyle = this.lightenColor(color, 15);
                         ctx.beginPath();
-                        ctx.moveTo(offsetX + (j + 1) * blockSize - 1, offsetY + i * blockSize);
-                        ctx.lineTo(offsetX + (j + 1) * blockSize - 1, offsetY + (i + 1) * blockSize - 1);
-                        ctx.lineTo(offsetX + j * blockSize, offsetY + (i + 1) * blockSize - 1);
+                        ctx.moveTo(blockX, blockY);                           // Top-left outer
+                        ctx.lineTo(blockX, blockY + blockSize);                    // Bottom-left outer
+                        ctx.lineTo(blockX + bevelSize, blockY + blockSize - bevelSize);  // Bottom-left inner
+                        ctx.lineTo(blockX + bevelSize, blockY + bevelSize);         // Top-left inner
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        // Right bevel (darker)
+                        ctx.fillStyle = this.darkenColor(color, 15);
+                        ctx.beginPath();
+                        ctx.moveTo(blockX + blockSize, blockY);                    // Top-right outer
+                        ctx.lineTo(blockX + blockSize, blockY + blockSize);             // Bottom-right outer
+                        ctx.lineTo(blockX + blockSize - bevelSize, blockY + blockSize - bevelSize); // Bottom-right inner
+                        ctx.lineTo(blockX + blockSize - bevelSize, blockY + bevelSize);        // Top-right inner
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        // Bottom bevel (darker)
+                        ctx.fillStyle = this.darkenColor(color, 30);
+                        ctx.beginPath();
+                        ctx.moveTo(blockX, blockY + blockSize);                    // Bottom-left outer
+                        ctx.lineTo(blockX + blockSize, blockY + blockSize);             // Bottom-right outer
+                        ctx.lineTo(blockX + blockSize - bevelSize, blockY + blockSize - bevelSize); // Bottom-right inner
+                        ctx.lineTo(blockX + bevelSize, blockY + blockSize - bevelSize);        // Bottom-left inner
                         ctx.closePath();
                         ctx.fill();
                     }
