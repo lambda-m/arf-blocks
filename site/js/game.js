@@ -107,6 +107,20 @@ class Game {
         this.overlayCanvas = document.createElement('canvas');
         this.overlayCtx = this.overlayCanvas.getContext('2d');
         
+        // Create game over overlay container
+        this.gameOverOverlay = document.createElement('div');
+        this.gameOverOverlay.className = 'game-over-overlay';
+        this.gameOverOverlay.style.display = 'none';
+        document.getElementById('game-container').appendChild(this.gameOverOverlay);
+        
+        // Create game over content
+        this.gameOverContent = document.createElement('div');
+        this.gameOverContent.className = 'game-over-content';
+        this.gameOverOverlay.appendChild(this.gameOverContent);
+        
+        // Load high score from local storage
+        this.highScore = parseInt(localStorage.getItem('blockGameHighScore')) || 0;
+        
         // Style and position the overlay canvas to cover the entire viewport
         this.overlayCanvas.style.position = 'fixed';
         this.overlayCanvas.style.top = '0';
@@ -230,6 +244,12 @@ class Game {
         
         // Redraw the board
         this.draw();
+        
+        // Update high score display if it exists
+        const highScoreElement = document.getElementById('high-score');
+        if (highScoreElement) {
+            highScoreElement.textContent = this.highScore;
+        }
     }
     
     generateNextPieces() {
@@ -592,10 +612,7 @@ class Game {
             
             // Check if game is over AFTER generating new pieces
             if (!this.hasValidMoves()) {
-                setTimeout(() => {
-                    alert('Game Over! Your score: ' + this.score);
-                    this.initGame();
-                }, 100); // Small delay to ensure UI updates
+                this.showGameOver();
             }
         } else {
             // Animate back to original position
@@ -901,6 +918,15 @@ class Game {
     
     updateScore() {
         document.getElementById('score').textContent = this.score;
+    }
+    
+    updateHighScore() {
+        if (this.score > this.highScore) {
+            this.highScore = this.score;
+            localStorage.setItem('blockGameHighScore', this.highScore);
+            return true;
+        }
+        return false;
     }
     
     draw() {
@@ -1401,6 +1427,242 @@ class Game {
         document.removeEventListener('touchend', this.handlePieceDragEnd.bind(this));
         document.removeEventListener('mousemove', this.handlePieceDragMove.bind(this));
         document.removeEventListener('mouseup', this.handlePieceDragEnd.bind(this));
+    }
+    
+    showGameOver() {
+        // Check if we have a new high score
+        const isNewHighScore = this.updateHighScore();
+        
+        // Create content for the game over overlay
+        this.gameOverContent.innerHTML = `
+            <h2>Game Over!</h2>
+            <div class="final-score-container">
+                <div class="final-score-label">Final Score</div>
+                <div class="final-score-value">${this.score}</div>
+                
+                <div class="high-score-container">
+                    <div class="high-score-label">
+                        High Score
+                        ${isNewHighScore ? '<span class="new-high-score-badge">New!</span>' : ''}
+                    </div>
+                    <div class="high-score-value">${this.highScore}</div>
+                </div>
+            </div>
+            <div class="game-over-buttons">
+                <button id="new-game-button" class="game-over-button">Play Again</button>
+            </div>
+        `;
+        
+        // Add CSS to the document if it doesn't exist yet
+        if (!document.getElementById('game-over-styles')) {
+            const styleElement = document.createElement('style');
+            styleElement.id = 'game-over-styles';
+            styleElement.textContent = `
+                .game-over-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0, 0, 0, 0.7);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 2000;
+                    opacity: 0;
+                    transition: opacity 0.5s ease;
+                }
+                
+                .game-over-content {
+                    background: var(--card-background, #282a3a);
+                    border: 8px solid var(--grid-border, #3d4158);
+                    border-radius: 20px;
+                    padding: 30px;
+                    text-align: center;
+                    width: 80%;
+                    max-width: 400px;
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+                    transform: translateY(30px);
+                    opacity: 0;
+                    transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), 
+                                opacity 0.6s ease;
+                }
+                
+                .game-over-overlay.visible .game-over-content {
+                    transform: translateY(0);
+                    opacity: 1;
+                }
+                
+                .game-over-overlay h2 {
+                    font-size: 36px;
+                    margin: 0 0 20px 0;
+                    background: linear-gradient(135deg, var(--accent-color, #00D2D3), var(--primary-color, #6C5CE7));
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
+                }
+                
+                .final-score-container {
+                    background: var(--background-color, #1e2030);
+                    border-radius: 15px;
+                    padding: 20px;
+                    margin: 20px 0 30px;
+                    box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.2);
+                }
+                
+                .final-score-label {
+                    font-size: 18px;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    margin-bottom: 10px;
+                    color: var(--text-color, #ffffff);
+                    opacity: 0.8;
+                }
+                
+                .final-score-value {
+                    font-size: 48px;
+                    font-weight: bold;
+                    color: var(--accent-color, #00D2D3);
+                    text-shadow: 0 2px 10px rgba(0, 210, 211, 0.3);
+                    margin-bottom: 15px;
+                }
+                
+                .high-score-container {
+                    margin-top: 15px;
+                    padding-top: 15px;
+                    border-top: 2px solid rgba(255, 255, 255, 0.1);
+                }
+                
+                .high-score-label {
+                    font-size: 14px;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    margin-bottom: 5px;
+                    color: var(--text-color, #ffffff);
+                    opacity: 0.6;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                }
+                
+                .high-score-value {
+                    font-size: 28px;
+                    font-weight: bold;
+                    color: var(--primary-color, #6C5CE7);
+                }
+                
+                .new-high-score-badge {
+                    background: linear-gradient(135deg, #FFD700, #FFA500);
+                    color: #000;
+                    font-weight: bold;
+                    font-size: 12px;
+                    padding: 2px 8px;
+                    border-radius: 10px;
+                    display: inline-block;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    box-shadow: 0 1px 3px rgba(255, 215, 0, 0.5);
+                }
+                
+                .game-over-buttons {
+                    display: flex;
+                    justify-content: center;
+                    gap: 15px;
+                }
+                
+                .game-over-button {
+                    background: linear-gradient(135deg, var(--accent-color, #00D2D3), var(--primary-color, #6C5CE7));
+                    color: white;
+                    border: none;
+                    padding: 15px 30px;
+                    border-radius: 12px;
+                    font-size: 18px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    box-shadow: 0 4px 12px var(--shadow-color, rgba(0, 0, 0, 0.25));
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+                
+                .game-over-button:hover {
+                    transform: translateY(-3px);
+                    box-shadow: 0 6px 16px var(--shadow-color, rgba(0, 0, 0, 0.25));
+                    filter: brightness(1.1);
+                }
+                
+                .game-over-button:active {
+                    transform: translateY(-1px);
+                }
+                
+                @keyframes scoreCountUp {
+                    from { opacity: 0; transform: scale(0.8); }
+                    to { opacity: 1; transform: scale(1); }
+                }
+                
+                .final-score-value {
+                    animation: scoreCountUp 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+                }
+                
+                @media (max-width: 400px) {
+                    .game-over-content {
+                        padding: 20px;
+                    }
+                    
+                    .game-over-overlay h2 {
+                        font-size: 28px;
+                    }
+                    
+                    .final-score-value {
+                        font-size: 36px;
+                    }
+                    
+                    .high-score-value {
+                        font-size: 24px;
+                    }
+                    
+                    .game-over-button {
+                        padding: 12px 24px;
+                        font-size: 16px;
+                    }
+                    
+                    .new-high-score-badge {
+                        font-size: 10px;
+                        padding: 1px 6px;
+                    }
+                }
+            `;
+            document.head.appendChild(styleElement);
+        }
+        
+        // Show the overlay with animation
+        this.gameOverOverlay.style.display = 'flex';
+        
+        // Trigger reflow to ensure the transition works
+        void this.gameOverOverlay.offsetWidth;
+        
+        // Fade in the overlay
+        this.gameOverOverlay.style.opacity = '1';
+        
+        // Add the visible class after a short delay to trigger the content animation
+        setTimeout(() => {
+            this.gameOverOverlay.classList.add('visible');
+        }, 100);
+        
+        // Add event listener to the new game button
+        document.getElementById('new-game-button').addEventListener('click', () => {
+            // Hide the overlay
+            this.gameOverOverlay.style.opacity = '0';
+            this.gameOverOverlay.classList.remove('visible');
+            
+            // Wait for the animation to complete before hiding
+            setTimeout(() => {
+                this.gameOverOverlay.style.display = 'none';
+                this.initGame();
+            }, 500);
+        });
     }
 }
 
