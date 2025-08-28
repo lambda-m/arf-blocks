@@ -1,6 +1,10 @@
-# Block Puzzle PWA
+# Arf Blocks
+
+![Arf Blocks Logo](./site/assets/icon-512.png)
 
 A Progressive Web App (PWA) recreating a block puzzle game for iOS. Place various shaped blocks on a 10x10 grid, clear lines, and score points. Designed to be ad-free and installable on iPhone via Safari.
+
+Please be aware this is a 100% AI generated game, built out of necessity as replacement for some online block game someone I love liked to play but was hijacked by tons of ads. Also available on https://arf-blocks.nl
 
 ## Features
 
@@ -25,12 +29,11 @@ A Progressive Web App (PWA) recreating a block puzzle game for iOS. Place variou
 ## Development Setup
 
 1. Clone the repository
-2. Install dependencies (if any)
-3. Run a local server:
+2. Run a local server:
    ```bash
    python -m http.server 8000
    ```
-4. Open in browser: `http://localhost:8000`
+3. Open in browser: `http://localhost:8000`
 
 ## Project Structure
 
