@@ -200,6 +200,12 @@ class Game {
         this.pieceHistory = [];
         this.droughtTracking = new Map(Object.keys(PIECE_WEIGHTS).map(key => [key, 0]));
         
+        // Pre-bind document-level handlers so add/remove use the same references
+        this._onDocTouchMove = this.handlePieceDragMove.bind(this);
+        this._onDocTouchEnd = this.handlePieceDragEnd.bind(this);
+        this._onDocMouseMove = this.handlePieceDragMove.bind(this);
+        this._onDocMouseUp = this.handlePieceDragEnd.bind(this);
+
         // Bind event listeners
         this.bindEvents();
         
@@ -279,8 +285,8 @@ class Game {
                 this.startDragFromPiece(e, index, true);
                 
                 // Immediately allow movement to continue onto the game board
-                document.addEventListener('touchmove', this.handlePieceDragMove.bind(this), { passive: false, once: false });
-                document.addEventListener('touchend', this.handlePieceDragEnd.bind(this), { passive: false, once: true });
+                document.addEventListener('touchmove', this._onDocTouchMove, { passive: false });
+                document.addEventListener('touchend', this._onDocTouchEnd, { passive: false, once: true });
             }, { passive: false });
             
             // Mouse events
@@ -289,8 +295,8 @@ class Game {
                 this.startDragFromPiece(e, index, false);
                 
                 // Immediately allow movement to continue onto the game board
-                document.addEventListener('mousemove', this.handlePieceDragMove.bind(this), { once: false });
-                document.addEventListener('mouseup', this.handlePieceDragEnd.bind(this), { once: true });
+                document.addEventListener('mousemove', this._onDocMouseMove);
+                document.addEventListener('mouseup', this._onDocMouseUp, { once: true });
             });
         });
         
@@ -366,6 +372,8 @@ class Game {
         this.boardHeight = boardRect.height;
         
         // Draw the piece and update game state
+        // Ensure the base board is drawn once at drag start
+        this.draw();
         this.updateDragState();
         this.drawNextPieces();
     }
@@ -398,8 +406,7 @@ class Game {
             visualY >= this.boardTop && 
             visualY <= this.boardBottom;
         
-        // Draw the game board
-        this.draw();
+        // Do NOT redraw the base game board on every move; only update overlay
         
         if (isOverBoard) {
             // Calculate grid position based on VISUAL position (including offset)
@@ -429,9 +436,9 @@ class Game {
             this.currentX = Math.max(0, Math.min(GRID_SIZE - width, this.currentX));
             this.currentY = Math.max(0, Math.min(GRID_SIZE - height, this.currentY));
             
-            // Check if placement is valid and show indicator
+            // Check if placement is valid and show indicator on the overlay
             if (this.isValidPlacement(this.currentX, this.currentY, shape)) {
-                this.drawValidPlacement(this.currentX, this.currentY);
+                this.drawValidPlacementOverlay(this.currentX, this.currentY);
             }
             
             // Hide cursor
@@ -445,6 +452,58 @@ class Game {
         
         // Draw the piece at the VISUAL position (which already includes the offset)
         this.drawDraggedPiece(visualX, visualY);
+    }
+
+    // Draw the valid placement outline onto the overlay canvas for performance
+    drawValidPlacementOverlay(x, y) {
+        if (!this.selectedPiece) return;
+        const shape = this.selectedPiece.shape;
+        const cellSize = this.boardWidth / GRID_SIZE;
+        const offsetLeft = this.boardLeft;
+        const offsetTop = this.boardTop;
+        
+        const ctx = this.overlayCtx;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        
+        for (let i = 0; i < shape.length; i++) {
+            for (let j = 0; j < shape[i].length; j++) {
+                if (shape[i][j]) {
+                    const left = offsetLeft + (x + j) * cellSize;
+                    const top = offsetTop + (y + i) * cellSize;
+                    const right = left + cellSize;
+                    const bottom = top + cellSize;
+                    
+                    // Top
+                    if (!shape[i-1]?.[j]) {
+                        ctx.moveTo(left, top);
+                        ctx.lineTo(right, top);
+                    }
+                    // Right
+                    if (!shape[i]?.[j+1]) {
+                        ctx.moveTo(right, top);
+                        ctx.lineTo(right, bottom);
+                    }
+                    // Bottom
+                    if (!shape[i+1]?.[j]) {
+                        ctx.moveTo(left, bottom);
+                        ctx.lineTo(right, bottom);
+                    }
+                    // Left
+                    if (!shape[i]?.[j-1]) {
+                        ctx.moveTo(left, top);
+                        ctx.lineTo(left, bottom);
+                    }
+                }
+            }
+        }
+        
+        ctx.stroke();
+        ctx.restore();
     }
     
     // Draw the dragged piece at the given screen coordinates
@@ -1423,10 +1482,10 @@ class Game {
         }
         
         // Remove the temporary document-level listeners
-        document.removeEventListener('touchmove', this.handlePieceDragMove.bind(this));
-        document.removeEventListener('touchend', this.handlePieceDragEnd.bind(this));
-        document.removeEventListener('mousemove', this.handlePieceDragMove.bind(this));
-        document.removeEventListener('mouseup', this.handlePieceDragEnd.bind(this));
+        document.removeEventListener('touchmove', this._onDocTouchMove);
+        document.removeEventListener('touchend', this._onDocTouchEnd);
+        document.removeEventListener('mousemove', this._onDocMouseMove);
+        document.removeEventListener('mouseup', this._onDocMouseUp);
     }
     
     showGameOver() {
