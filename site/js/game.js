@@ -200,6 +200,12 @@ class Game {
         this.pieceHistory = [];
         this.droughtTracking = new Map(Object.keys(PIECE_WEIGHTS).map(key => [key, 0]));
         
+        // Pre-bind document-level handlers so add/remove use the same references
+        this._onDocTouchMove = this.handlePieceDragMove.bind(this);
+        this._onDocTouchEnd = this.handlePieceDragEnd.bind(this);
+        this._onDocMouseMove = this.handlePieceDragMove.bind(this);
+        this._onDocMouseUp = this.handlePieceDragEnd.bind(this);
+
         // Bind event listeners
         this.bindEvents();
         
@@ -279,8 +285,8 @@ class Game {
                 this.startDragFromPiece(e, index, true);
                 
                 // Immediately allow movement to continue onto the game board
-                document.addEventListener('touchmove', this.handlePieceDragMove.bind(this), { passive: false, once: false });
-                document.addEventListener('touchend', this.handlePieceDragEnd.bind(this), { passive: false, once: true });
+                document.addEventListener('touchmove', this._onDocTouchMove, { passive: false });
+                document.addEventListener('touchend', this._onDocTouchEnd, { passive: false, once: true });
             }, { passive: false });
             
             // Mouse events
@@ -289,8 +295,8 @@ class Game {
                 this.startDragFromPiece(e, index, false);
                 
                 // Immediately allow movement to continue onto the game board
-                document.addEventListener('mousemove', this.handlePieceDragMove.bind(this), { once: false });
-                document.addEventListener('mouseup', this.handlePieceDragEnd.bind(this), { once: true });
+                document.addEventListener('mousemove', this._onDocMouseMove);
+                document.addEventListener('mouseup', this._onDocMouseUp, { once: true });
             });
         });
         
@@ -1423,10 +1429,10 @@ class Game {
         }
         
         // Remove the temporary document-level listeners
-        document.removeEventListener('touchmove', this.handlePieceDragMove.bind(this));
-        document.removeEventListener('touchend', this.handlePieceDragEnd.bind(this));
-        document.removeEventListener('mousemove', this.handlePieceDragMove.bind(this));
-        document.removeEventListener('mouseup', this.handlePieceDragEnd.bind(this));
+        document.removeEventListener('touchmove', this._onDocTouchMove);
+        document.removeEventListener('touchend', this._onDocTouchEnd);
+        document.removeEventListener('mousemove', this._onDocMouseMove);
+        document.removeEventListener('mouseup', this._onDocMouseUp);
     }
     
     showGameOver() {
